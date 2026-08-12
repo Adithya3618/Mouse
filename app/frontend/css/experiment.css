@@ -1,0 +1,101 @@
+#gameScreen {
+    display: none;
+    width: 100%;
+    height: 80vh;
+    border-style: solid;
+
+}
+#game{
+    display: none;
+}
+
+#ending{
+    display: none;
+    font-size: 50px;
+    text-align: center;
+}
+
+#break1{
+    display: none;
+}
+#break2{
+    display: none;
+}
+
+#instructions0{
+    display: none;
+}
+
+#instructions1{
+    display: none;
+}
+
+#instructions2{
+
+    display: none;
+}
+
+#instructions3{
+    display: none;
+}
+
+#start{
+    display: none;
+}
+
+#timeLeft{
+    display: none;
+    font-size: 30px;
+    text-align: right;
+    margin-top: 15px;
+}
+
+#resultContainer {
+    display: none;
+    margin-top: 20px;
+}
+
+/*
+ * NOTE: the original index.html put an inline `style="text-align: center;
+ * font-size: 50px;"` directly on the #countdown element. Since inline
+ * styles win over an external stylesheet, the countdown text always
+ * actually rendered at 50px/centered - the 24px below was dead. This rule
+ * reproduces the real original rendered result now that the inline style
+ * has been removed for strict HTML/CSS separation.
+ */
+#countdown {
+    font-size: 50px;
+    font-weight: bold;
+    text-align: center;
+}
+
+#restart{
+    display:none;
+}
+
+#save{
+    display:none;
+}
+
+/*
+ * These four classes replace inline `style="..."` attributes that were on
+ * the settings panel, instruction/break paragraphs, and cursor-choice
+ * icons in the original index.html. Values are unchanged - only their
+ * location moved from the HTML to this stylesheet.
+ */
+.settings-panel {
+    display: none;
+}
+
+.instructions-text {
+    font-size: x-large;
+    font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+.cursor-icon {
+    font-size: 48px;
+}
+
+.cursor-icon-spacing {
+    margin-right: 10px;
+}

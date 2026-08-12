@@ -1,0 +1,425 @@
+/* Shared design tokens (--paper, --panel, --ink, --slate, --line, --accent,
+   --accent-soft, --amber) come from css/intake.css's :root block, so every
+   screen in the app draws from one consistent palette. */
+
+body.experiment-active {
+  align-items: flex-start;
+  padding-top: 40px;
+  padding-bottom: 40px;
+}
+
+#screen-experiment {
+  width: 100%;
+}
+
+.experiment-wrap {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.experiment-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 28px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.experiment-topbar .eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+/* --- Timer badge: the single on-screen source of truth for phase timing,
+   updated only from the experiment controller's tick subscription. --- */
+.timer-badge {
+  text-align: right;
+  line-height: 1.2;
+}
+
+.timer-badge-label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+.timer-badge-value {
+  display: block;
+  font-size: 30px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: .02em;
+}
+
+/* --- Task panel: title + instruction + condition metadata --- */
+.task-panel {
+  margin-bottom: 28px;
+}
+
+.task-title {
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px 0;
+  color: var(--ink);
+}
+
+.task-instruction {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--ink);
+  max-width: 720px;
+  margin: 0 0 20px 0;
+}
+
+.starting-number {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 12px 20px;
+}
+
+.starting-number-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.starting-number-value {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* --- Task-status pills: at-a-glance "what am I doing right now" --- */
+.pill-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11.5px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--off);
+  color: var(--slate);
+}
+
+.pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--slate);
+}
+
+.pill.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pill.active .dot {
+  background: var(--accent);
+}
+
+/* --- Pre-task countdown: one reusable "get ready / 3 / 2 / 1 / begin"
+   block, shown before every one of the 7 active tasks. --- */
+.prep-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 0 48px;
+}
+
+.prep-countdown-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 0 0 12px 0;
+}
+
+.prep-countdown-value {
+  font-size: 120px;
+  font-weight: 700;
+  color: var(--amber);
+  line-height: 1;
+}
+
+/* --- Dual-task: visually elevated (both tasks running at once) --- */
+#screen-experiment[data-phase-type="dual-task"] .task-title {
+  color: var(--accent);
+}
+
+#screen-experiment[data-phase-type="dual-task"] .task-panel {
+  border-left: 4px solid var(--accent);
+  padding-left: 20px;
+}
+
+/* --- Recovery: deliberately calm and visually distinct from active tasks --- */
+#screen-experiment[data-phase-type="recovery"] .task-title {
+  color: var(--slate);
+  font-weight: 600;
+}
+
+#screen-experiment[data-phase-type="recovery"] .task-instruction {
+  color: var(--slate);
+}
+
+#screen-experiment[data-phase-type="recovery"] .timer-badge-value {
+  color: var(--slate);
+}
+
+/* --- Complete / Results screen --- */
+.complete-panel {
+  padding: 64px 24px 80px;
+}
+
+.complete-message {
+  text-align: center;
+  margin-bottom: 48px;
+}
+
+.complete-message h1 {
+  font-size: 34px;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  color: var(--ink);
+}
+
+.complete-message p {
+  font-size: 16px;
+  color: var(--slate);
+  margin: 0;
+}
+
+.results-section {
+  max-width: 760px;
+  margin: 0 auto 40px auto;
+  padding-top: 32px;
+  border-top: 1px solid var(--line);
+}
+
+.results-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.results-heading {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 0 0 18px 0;
+}
+
+/* --- Mouse performance table --- */
+.results-table-wrap {
+  overflow-x: auto;
+}
+
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.results-table th,
+.results-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.results-table th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--slate);
+  font-weight: 600;
+}
+
+.results-table td {
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--ink);
+}
+
+.results-table td:first-child {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 500;
+  white-space: normal;
+}
+
+/* --- Starting numbers --- */
+.starting-numbers-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 0;
+}
+
+.starting-numbers-list dt {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 0 0 4px 0;
+}
+
+.starting-numbers-list dd {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+/* --- Export --- */
+.export-section {
+  text-align: center;
+}
+
+.download-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 16px 32px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background .15s ease, transform .1s ease;
+}
+
+.download-button:hover {
+  background: #0F5F54;
+}
+
+.download-button:active {
+  transform: translateY(1px);
+}
+
+.download-button:disabled {
+  background: #C7CDCB;
+  cursor: not-allowed;
+}
+
+.export-status {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+.export-status.is-error {
+  color: #B3261E;
+}
+
+/* --- Mouse task container: sizing/visual chrome, PLUS the positioning fix
+   below. `display` and `border-style` come from css/experiment.css
+   unchanged; `width`/`height` are overridden here to a fixed frame size
+   instead of 80vh, purely for layout polish.
+   The caption is a normal-flow label above the frame (not an absolutely
+   positioned overlay), so it needs no `position` here and stays out of
+   the positioning fix entirely. --- */
+#gameScreen {
+  margin-top: 8px;
+  height: 460px;
+  border-radius: 6px;
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+/* Targets (mouse/target.js's .target, position: absolute) resolve against
+   the nearest positioned ancestor. #game previously had no explicit size
+   and no ancestor anywhere up to <html> had `position` set, so targets
+   fell back to the viewport as their containing block - completely
+   independent of where the visible "Target field" box actually sits on
+   the page. That is what let targets render above/outside the box.
+   Making #game itself `position: relative` and sizing it to exactly fill
+   #gameScreen's content box (inside its border) makes #game the real
+   positioning parent, matching what mouse/target.js now measures via
+   clientWidth/clientHeight to keep every target fully contained. */
+#game {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-caption {
+  display: block;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+/* The mouse task's own internal countdown/ending/start elements are a
+   required DOM contract for mouse/mouseTask.js (see
+   experimentController.js), but must never be visible to the participant -
+   the Time Remaining badge above is the one on-screen timer, and phases
+   start automatically (no manual Start button in this flow). mouseTask.js
+   only ever touches these elements' `display` and `textContent`, never
+   `position`, so this override is never fought over. */
+#timeLeft,
+#ending,
+#start {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+}
+
+@media (max-width: 720px) {
+  .experiment-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .timer-badge {
+    text-align: left;
+  }
+  .task-title {
+    font-size: 26px;
+  }
+  .prep-countdown-value {
+    font-size: 64px;
+  }
+  #gameScreen {
+    height: 320px;
+  }
+  .starting-numbers-list {
+    grid-template-columns: 1fr;
+  }
+}

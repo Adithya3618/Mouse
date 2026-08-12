@@ -1,0 +1,150 @@
+h1 {
+    font-size: 50px!important;
+}
+.col{
+    background-color: gray;
+    margin: 2px;
+    border-color: black;
+}
+
+.white { background-color: white; }
+.lemyellow { background-color: #ffff99;}
+.lightblue {background-color: #80bfff;}
+.lightgreen {background-color: #8cd98c; }
+.black {background-color: black;}
+.maroon {background-color: #b30000;}
+.peach {background-color: #ff6666;}
+.red { background-color: red; }
+.blue { background-color: #0d3483; }
+.darkgreen { background-color: #264d00; }
+.yellow { background-color: yellow; }
+.purple { background-color: purple; }
+.orange { background-color: orange; }
+
+.circle {
+    display: inline-block;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    margin: 10px;
+    cursor: pointer;
+    box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.3);
+    transition: border 0.3s ease;
+  }
+
+#menu {
+    font-size: x-large;
+    width: 50%;
+}
+
+input[type="radio"] {
+    display: none;
+}
+
+
+input[type="radio"]:checked + label {
+    border: 3px solid white;
+} 
+
+#plus{
+    font-size: 48px;
+    margin : 5px;
+}
+
+#pointer{
+    font-size: 48px;
+    margin: 5px;
+}
+
+#gameScreen {
+    display: none;
+    width: 100%;
+    height: 80vh;
+    border-style: solid;
+
+}
+#game{
+    display: none;
+}
+
+#ending{
+    display: none;
+}
+
+#break1{
+    display: none;
+}
+#break2{
+    display: none;
+}
+
+#instructions0{
+    display: none;
+}
+
+#instructions1{
+    display: none;
+}
+
+#instructions2{
+
+    display: none;
+}
+
+#instructions3{
+    display: none;
+}
+
+#start{
+    display: none;
+}
+
+#timeLeft{
+    display: none;
+}
+.target {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    animation: zoomInOut 4s infinite;
+    animation-timing-function: linear;
+    background-color: #ff5bae;
+    border: 10px solid rgba(255, 221, 238, 0.5);
+    border-radius: 50%;
+}
+  
+@keyframes zoomInOut {
+    0% {transform: scale(0.0, 0.0);}
+    40%{transform: scale(1.0, 1.0);}
+    80%{transform: scale(0.3, 0.3);}
+    100%{transform: scale(0.0, 0.0);}
+    
+}
+
+   
+
+#resultContainer {
+    display: none;
+    margin-top: 20px;
+}
+
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    display: inline;
+}
+
+#countdown {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+#restart{
+    display:none;
+}
+
+#save{
+    display:none;
+}
+
+

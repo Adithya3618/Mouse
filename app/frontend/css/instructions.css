@@ -1,0 +1,10 @@
+.instructions-body{
+  margin-bottom:32px;
+  max-width:640px;
+}
+.instructions-body p{
+  font-size:15px;
+  line-height:1.6;
+  color:var(--ink);
+  margin:0 0 16px 0;
+}
