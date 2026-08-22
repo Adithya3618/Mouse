@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="css/experiment.css">
 <link rel="stylesheet" href="css/mouse-task.css">
 <link rel="stylesheet" href="css/experiment-screen.css">
+<link rel="stylesheet" href="css/speech.css">
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -152,6 +153,20 @@
       <span class="pill" id="countPill"><span class="dot"></span>Count aloud — off</span>
       <span class="pill" id="clickPill"><span class="dot"></span>Click targets — off</span>
     </div>
+
+    <!-- Speech/transcript UI - active only during SUBTRACTION_<n>/DUAL_TASK_<n>
+         phases (see js/ui/speechTranscriptPanel.js). Deliberately kept
+         inside .task-panel, separate from #gameScreen/#game below, so it
+         never overlaps or interferes with the mouse target field during
+         dual-task conditions. -->
+    <div class="speech-panel" id="speechPanel" hidden>
+      <div class="speech-status" id="speechMicStatus">🎤 Microphone inactive</div>
+      <div class="speech-live">
+        <span class="speech-live-label">Live Response</span>
+        <p class="speech-live-value" id="speechLiveResponse">—</p>
+      </div>
+      <p class="speech-error" id="speechError" hidden></p>
+    </div>
   </div>
 
   <span class="canvas-caption" id="canvasCaption" hidden>Target field</span>
@@ -182,6 +197,26 @@
             </tr>
           </thead>
           <tbody id="mousePerformanceTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="results-section">
+      <h2 class="results-heading">Cognitive Performance Results</h2>
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Condition</th>
+              <th>Starting Number</th>
+              <th>Responses</th>
+              <th>Correct</th>
+              <th>Incorrect</th>
+              <th>Unresolved</th>
+              <th>Cognitive Accuracy</th>
+            </tr>
+          </thead>
+          <tbody id="cognitivePerformanceTableBody"></tbody>
         </table>
       </div>
     </div>

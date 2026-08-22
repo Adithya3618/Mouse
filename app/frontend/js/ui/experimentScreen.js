@@ -16,6 +16,7 @@ import { getPhaseDisplay } from './phaseCopy.js';
 import { formatTime } from '../timer/timer.js';
 import { show, hide } from './transition.js';
 import { renderResults } from './resultsScreen.js';
+import { initSpeechTranscriptPanel } from './speechTranscriptPanel.js';
 
 const PREPARATION_PHASE_TYPE = 'preparation';
 const COMPLETE_PHASE_ID = 'COMPLETE';
@@ -29,6 +30,8 @@ const PILL_ELIGIBLE_PHASE_TYPES = new Set(['motor', 'cognitive', 'dual-task']);
 
 export function initExperimentScreen() {
     const controller = getExperimentController();
+
+    initSpeechTranscriptPanel(controller);
 
     const screenExperiment = document.getElementById('screen-experiment');
     const screenInstructions = document.getElementById('screen-instructions');

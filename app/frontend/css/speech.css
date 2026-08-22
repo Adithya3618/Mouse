@@ -1,0 +1,59 @@
+/* Live microphone/transcript UI (js/ui/speechTranscriptPanel.js). Shares
+   the design tokens defined in css/intake.css's :root block, same as
+   css/experiment-screen.css. Deliberately its own file/module, separate
+   from the mouse task's CSS, HTML and JS. */
+
+.speech-panel {
+  margin-top: 18px;
+  margin-bottom: 4px;
+  padding: 16px 20px;
+  max-width: 720px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+}
+
+.speech-status {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-bottom: 12px;
+}
+
+.speech-status.is-active {
+  color: var(--accent);
+}
+
+.speech-live-label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin-bottom: 6px;
+}
+
+.speech-live-value {
+  font-size: 19px;
+  line-height: 1.4;
+  color: var(--ink);
+  min-height: 1.4em;
+  margin: 0;
+  word-break: break-word;
+}
+
+.speech-error {
+  margin: 12px 0 0 0;
+  font-size: 13px;
+  color: #B3261E;
+}
+
+@media (max-width: 720px) {
+  .speech-panel {
+    max-width: none;
+  }
+}

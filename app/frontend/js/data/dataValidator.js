@@ -35,6 +35,20 @@ export function isValidMouseStatistics(stats) {
     return fields.every((field) => typeof stats[field] === 'number' && !Number.isNaN(stats[field]));
 }
 
+export function isValidCognitivePerformance(stats) {
+    if (stats == null) {
+        return true; // absent cognitive data is valid for non-cognitive phases
+    }
+    const numericFields = ['correctResponses', 'incorrectResponses', 'unresolvedResponses', 'numberOfResponses', 'cognitiveAccuracy'];
+    return (
+        numericFields.every((field) => typeof stats[field] === 'number' && !Number.isNaN(stats[field])) &&
+        typeof stats.rawTranscript === 'string' &&
+        Array.isArray(stats.parsedNumbers) &&
+        Array.isArray(stats.expectedNumbers) &&
+        Array.isArray(stats.responses)
+    );
+}
+
 // Validates a full session record (see data/sessionData.js#createSession).
 // `validPhaseIds` should be the phaseId list from the sequence that was
 // actually run (see experiment/phases.js#buildPhaseSequence).
@@ -68,6 +82,9 @@ export function validateSession(session, validPhaseIds, config) {
         }
         if (!isValidMouseStatistics(phase.mousePerformance)) {
             errors.push(`${label}: mousePerformance contains non-numeric values.`);
+        }
+        if (!isValidCognitivePerformance(phase.cognitivePerformance)) {
+            errors.push(`${label}: cognitivePerformance is malformed.`);
         }
     });
 

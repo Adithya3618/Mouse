@@ -20,6 +20,24 @@ const MOUSE_CONDITION_LABELS = {
 
 const STARTING_NUMBER_SUBTRACTION_VALUES = [3, 7, 17];
 
+// Cognitive results are kept in their own table, separate from the mouse
+// performance table above - cognitive and mouse accuracy are never
+// combined into one score (see data/sessionData.js#recordCognitivePerformance).
+const COGNITIVE_CONDITION_ORDER = [
+    'SUBTRACTION_3', 'DUAL_TASK_3',
+    'SUBTRACTION_7', 'DUAL_TASK_7',
+    'SUBTRACTION_17', 'DUAL_TASK_17'
+];
+
+const COGNITIVE_CONDITION_LABELS = {
+    SUBTRACTION_3: 'Subtract by 3',
+    DUAL_TASK_3: 'Dual Task — Subtract by 3',
+    SUBTRACTION_7: 'Subtract by 7',
+    DUAL_TASK_7: 'Dual Task — Subtract by 7',
+    SUBTRACTION_17: 'Subtract by 17',
+    DUAL_TASK_17: 'Dual Task — Subtract by 17'
+};
+
 export function initResultsScreen() {
     document.getElementById('downloadResultsBtn').addEventListener('click', downloadExcelResults);
 }
@@ -28,8 +46,29 @@ export function initResultsScreen() {
 // just-finished ExperimentController session, not test/mock data.
 export function renderResults(session) {
     renderMousePerformanceTable(session);
+    renderCognitivePerformanceTable(session);
     renderStartingNumbers(session);
     setExportStatus('', false);
+}
+
+function renderCognitivePerformanceTable(session) {
+    const tbody = document.getElementById('cognitivePerformanceTableBody');
+    tbody.textContent = '';
+
+    for (const phaseId of COGNITIVE_CONDITION_ORDER) {
+        const phase = session.phases.find((p) => p.phaseId === phaseId);
+        const cognitive = phase ? phase.cognitivePerformance : null;
+
+        const row = document.createElement('tr');
+        row.appendChild(createCell(COGNITIVE_CONDITION_LABELS[phaseId]));
+        row.appendChild(createCell(phase && phase.startingNumber != null ? String(phase.startingNumber) : '—'));
+        row.appendChild(createCell(cognitive ? String(cognitive.numberOfResponses) : '—'));
+        row.appendChild(createCell(cognitive ? String(cognitive.correctResponses) : '—'));
+        row.appendChild(createCell(cognitive ? String(cognitive.incorrectResponses) : '—'));
+        row.appendChild(createCell(cognitive ? String(cognitive.unresolvedResponses) : '—'));
+        row.appendChild(createCell(cognitive ? formatPercentage(cognitive.cognitiveAccuracy) : '—'));
+        tbody.appendChild(row);
+    }
 }
 
 function renderMousePerformanceTable(session) {

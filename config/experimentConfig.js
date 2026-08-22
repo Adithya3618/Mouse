@@ -42,7 +42,19 @@ export const experimentConfig = {
     randomStartingNumberRange: {
         min: 799,
         max: 999
-    }
+    },
+
+    // How a spoken response's "expected number" is computed for cognitive
+    // (SUBTRACTION_<n>/DUAL_TASK_<n>) scoring - see
+    // cognitive/speechScoring.js for the full rationale. 'adaptive'
+    // (default, researcher-selected) continues the expected sequence from
+    // the participant's own previous spoken number, so a single slip does
+    // not cascade into every later response being marked incorrect.
+    // 'strict' instead always compares against the pure mathematical
+    // sequence from startingNumber. Change this value to switch scoring
+    // methodology for all future sessions; it does not require touching
+    // cognitive/speechScoring.js itself.
+    cognitiveScoringMode: 'adaptive'
 };
 
 export default experimentConfig;

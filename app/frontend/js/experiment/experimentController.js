@@ -22,11 +22,13 @@ import { buildPhaseSequence, PhaseId } from './phases.js';
 import { Timer } from '../timer/timer.js';
 import { generateStartingNumber } from '../cognitive/randomNumber.js';
 import { SubtractionTask } from '../cognitive/subtractionTask.js';
+import { CognitiveSpeechSession } from '../cognitive/cognitiveSpeechSession.js';
 import {
     createSession,
     startPhaseRecord,
     endPhaseRecord,
     recordMousePerformance,
+    recordCognitivePerformance,
     endSession
 } from '../data/sessionData.js';
 
@@ -107,6 +109,7 @@ export class ExperimentController {
         timerFactory = (callbacks) => new Timer(callbacks),
         mouseTaskAdapter = defaultMouseTaskAdapter,
         randomNumberGenerator = generateStartingNumber,
+        cognitiveSpeechSessionFactory = (options) => new CognitiveSpeechSession(options),
         logger = defaultLogger,
         participantId = null
     } = {}) {
@@ -118,6 +121,7 @@ export class ExperimentController {
         this._timerFactory = timerFactory;
         this._mouseTaskAdapter = mouseTaskAdapter;
         this._randomNumberGenerator = randomNumberGenerator;
+        this._cognitiveSpeechSessionFactory = cognitiveSpeechSessionFactory;
         this._logger = logger;
         this._participantId = participantId;
 
@@ -128,6 +132,7 @@ export class ExperimentController {
         this._currentPhaseRecord = null;
         this._currentTimer = null;
         this._currentSubtractionTask = null;
+        this._currentCognitiveSpeechSession = null;
         this._lastStartingNumber = null;
         this._conditionStartingNumbers = {};
 
@@ -245,8 +250,23 @@ export class ExperimentController {
                 duration: phaseDescriptor.duration
             });
             this._currentSubtractionTask.start();
+
+            // Independent of SubtractionTask above (which only tracks
+            // timing) - the microphone/live-transcript system. Started and
+            // stopped on exactly the same cognitiveActive gate, so speech
+            // recognition is active only during SUBTRACTION_<n>/
+            // DUAL_TASK_<n> and never during preparation, recovery,
+            // instructions, the motor-only baseline, or COMPLETE.
+            this._currentCognitiveSpeechSession = this._cognitiveSpeechSessionFactory({
+                subtractionValue: phaseDescriptor.subtractionValue,
+                startingNumber: extra.startingNumber,
+                scoringMode: this._config.cognitiveScoringMode,
+                logger: this._logger
+            });
+            this._currentCognitiveSpeechSession.start();
         } else {
             this._currentSubtractionTask = null;
+            this._currentCognitiveSpeechSession = null;
         }
 
         this._currentPhaseRecord = startPhaseRecord(this._session, phaseDescriptor, extra);
@@ -305,6 +325,16 @@ export class ExperimentController {
         if (this._currentSubtractionTask) {
             this._currentSubtractionTask.stop();
             this._currentSubtractionTask = null;
+        }
+        if (this._currentCognitiveSpeechSession) {
+            // Stop first, then read results - stop() closes out
+            // phaseEndTime and halts the microphone before we snapshot the
+            // final transcript/scoring onto this phase's record.
+            this._currentCognitiveSpeechSession.stop();
+            if (this._currentPhaseRecord) {
+                recordCognitivePerformance(this._currentPhaseRecord, this._currentCognitiveSpeechSession.getResults());
+            }
+            this._currentCognitiveSpeechSession = null;
         }
         if (this._currentPhaseRecord) {
             endPhaseRecord(this._currentPhaseRecord);
@@ -366,6 +396,14 @@ export class ExperimentController {
     // false, even if a subtractionValue/startingNumber is already known.
     getCurrentSubtractionTask() {
         return this._currentSubtractionTask;
+    }
+
+    // The current phase's live CognitiveSpeechSession, if the microphone
+    // is actually supposed to be listening right now - null under the
+    // exact same conditions as getCurrentSubtractionTask() above (i.e.
+    // whenever cognitiveActive is false for the current phase).
+    getCurrentCognitiveSpeechSession() {
+        return this._currentCognitiveSpeechSession;
     }
 
     getSession() {

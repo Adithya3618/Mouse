@@ -43,7 +43,8 @@ export function startPhaseRecord(session, phaseDescriptor, extra = {}) {
         startingNumber: extra.startingNumber ?? null,
         startedAt: new Date().toISOString(),
         endedAt: null,
-        mousePerformance: null
+        mousePerformance: null,
+        cognitivePerformance: null
     };
     session.phases.push(record);
     return record;
@@ -69,6 +70,17 @@ export function recordMousePerformance(record, { totalTargets, totalClicks, tota
         targetEfficiency: calculateTargetEfficiency(totalHits, totalTargets)
     };
     return record.mousePerformance;
+}
+
+// Stores cognitive (speech) performance for a single phase, using the
+// scoring produced by cognitive/cognitiveSpeechSession.js#getResults().
+// Mirrors recordMousePerformance() above: each cognitive-active phase
+// (SUBTRACTION_<n>, DUAL_TASK_<n>) gets its own independent
+// cognitivePerformance object, and it is never combined with that phase's
+// mousePerformance into a single score.
+export function recordCognitivePerformance(record, results) {
+    record.cognitivePerformance = { ...results };
+    return record.cognitivePerformance;
 }
 
 export function endSession(session) {

@@ -70,7 +70,17 @@ const SESSION_RESULTS_HEADER_ROW = [
     'Total Hits',
     'Total Misses',
     'Total Accuracy (%)',
-    'Target Efficiency (%)'
+    'Target Efficiency (%)',
+    // Cognitive (speech) columns - additive, appended after the existing
+    // mouse columns above, which are left completely unchanged. Populated
+    // only for cognitive-active phases (SUBTRACTION_<n>/DUAL_TASK_<n>); see
+    // data/sessionData.js#recordCognitivePerformance.
+    'Responses',
+    'Correct Responses',
+    'Incorrect Responses',
+    'Unresolved Responses',
+    'Cognitive Accuracy (%)',
+    'Raw Transcript'
 ];
 
 async function buildSessionResultsWorkbook(formattedSession) {
@@ -82,6 +92,7 @@ async function buildSessionResultsWorkbook(formattedSession) {
 
     for (const phase of formattedSession.phases) {
         const mouse = phase.mousePerformance;
+        const cognitive = phase.cognitivePerformance;
         worksheet.addRow([
             formattedSession.participantCode ?? '',
             formattedSession.sessionId ?? '',
@@ -96,7 +107,13 @@ async function buildSessionResultsWorkbook(formattedSession) {
             mouse ? mouse.totalHits : '',
             mouse ? mouse.totalMisses : '',
             mouse ? Number(mouse.totalAccuracy.toFixed(2)) : '',
-            mouse ? Number(mouse.targetEfficiency.toFixed(2)) : ''
+            mouse ? Number(mouse.targetEfficiency.toFixed(2)) : '',
+            cognitive ? cognitive.numberOfResponses : '',
+            cognitive ? cognitive.correctResponses : '',
+            cognitive ? cognitive.incorrectResponses : '',
+            cognitive ? cognitive.unresolvedResponses : '',
+            cognitive ? Number(cognitive.cognitiveAccuracy.toFixed(2)) : '',
+            cognitive ? cognitive.rawTranscript : ''
         ]);
     }
 

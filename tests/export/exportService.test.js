@@ -66,6 +66,16 @@ function makeFormattedSession(overrides = {}) {
                     totalMisses: 12,
                     totalAccuracy: 60,
                     targetEfficiency: 90
+                },
+                cognitivePerformance: {
+                    subtractionRule: 3,
+                    startingNumber: 947,
+                    correctResponses: 14,
+                    incorrectResponses: 4,
+                    unresolvedResponses: 1,
+                    numberOfResponses: 19,
+                    cognitiveAccuracy: 14 / 18 * 100,
+                    rawTranscript: '944 941 938 ...'
                 }
             }
         ],
@@ -97,7 +107,13 @@ test('buildSessionResultsWorkbook produces a readable .xlsx with the correct hea
         'Total Hits',
         'Total Misses',
         'Total Accuracy (%)',
-        'Target Efficiency (%)'
+        'Target Efficiency (%)',
+        'Responses',
+        'Correct Responses',
+        'Incorrect Responses',
+        'Unresolved Responses',
+        'Cognitive Accuracy (%)',
+        'Raw Transcript'
     ]);
 });
 
@@ -146,12 +162,37 @@ test('buildSessionResultsWorkbook leaves mouse columns blank for non-mouse phase
     // MOTOR_BASELINE and DUAL_TASK_3 must never be combined into one score.
     assert.notEqual(motorAccuracy(worksheet), dualTaskAccuracy(worksheet));
 
+    // Non-cognitive phases leave the cognitive columns blank too.
+    assert.equal(recoveryRow[14], ''); // Responses
+    assert.equal(subtractionRow[14], ''); // no speech data recorded for the fixture's SUBTRACTION_3 row
+
     function motorAccuracy(ws) {
         return ws.getRow(2).values[13];
     }
     function dualTaskAccuracy(ws) {
         return ws.getRow(5).values[13];
     }
+});
+
+test('buildSessionResultsWorkbook populates cognitive (speech) columns for a cognitive-active phase, independent of that phase\'s mouse columns', async () => {
+    const buffer = await buildSessionResultsWorkbook(makeFormattedSession());
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const worksheet = workbook.getWorksheet('Session Results');
+
+    const dualTaskRow = worksheet.getRow(5).values.slice(1);
+    assert.equal(dualTaskRow[4], 'DUAL_TASK_3');
+    assert.equal(dualTaskRow[14], 19); // Responses
+    assert.equal(dualTaskRow[15], 14); // Correct Responses
+    assert.equal(dualTaskRow[16], 4); // Incorrect Responses
+    assert.equal(dualTaskRow[17], 1); // Unresolved Responses
+    assert.equal(dualTaskRow[18], Number((14 / 18 * 100).toFixed(2))); // Cognitive Accuracy
+    assert.equal(dualTaskRow[19], '944 941 938 ...'); // Raw Transcript
+
+    // Cognitive and mouse data for the same phase are independent columns,
+    // never combined into one score.
+    assert.equal(dualTaskRow[8], 20); // Total Targets (mouse)
+    assert.equal(dualTaskRow[12], 60); // Total Accuracy (mouse)
 });
 
 test('buildSessionResultsFilename produces a meaningful filename from participant/session', () => {

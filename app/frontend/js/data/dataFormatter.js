@@ -27,7 +27,10 @@ export function formatSessionForExport(session) {
             duration: phase.duration,
             startedAt: phase.startedAt,
             endedAt: phase.endedAt,
-            ...(phase.mousePerformance ? { mousePerformance: { ...phase.mousePerformance } } : {})
+            ...(phase.mousePerformance ? { mousePerformance: { ...phase.mousePerformance } } : {}),
+            ...(phase.cognitivePerformance
+                ? { cognitivePerformance: { ...phase.cognitivePerformance, responses: phase.cognitivePerformance.responses.map((r) => ({ ...r })) } }
+                : {})
         }))
     };
 }
