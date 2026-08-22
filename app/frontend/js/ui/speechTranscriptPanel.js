@@ -30,9 +30,14 @@ export function initSpeechTranscriptPanel(controller) {
         micStatus.textContent = active ? '🎤 MICROPHONE ACTIVE' : '🎤 MICROPHONE INACTIVE';
         micStatus.classList.toggle('is-active', active);
 
-        const finalText = session.getRawTranscript();
+        // Comma-separates the recognized number segments for readability
+        // (960, 967, 964, 961) - display formatting only. The underlying
+        // stored/exported raw transcript (session.getRawTranscript(), used
+        // by data/dataFormatter.js and the Excel export) is untouched by
+        // this and remains space-joined.
+        const finalDisplay = formatFinalSegmentsForDisplay(session.getRawResponseSegments());
         const interimText = session.getInterimTranscript();
-        const combined = [finalText, interimText].filter(Boolean).join(' ');
+        const combined = [finalDisplay, interimText].filter(Boolean).join(' ');
         liveResponse.textContent = combined || '—';
 
         const error = session.getLastError();
@@ -63,6 +68,16 @@ export function initSpeechTranscriptPanel(controller) {
         renderSessionState(session);
         unsubscribeSession = session.onUpdate(renderSessionState);
     });
+}
+
+// Joins recognized number segments with ", " for on-screen readability
+// (e.g. "960, 967, 964, 961" instead of "960 967 964 961"). Exported as a
+// small, pure function - separate from the DOM-touching code above - so
+// this presentation-only formatting can be tested directly. Never called
+// anywhere data is stored or exported; see cognitiveSpeechSession.js's
+// getRawTranscript() (space-joined, unchanged) for that.
+export function formatFinalSegmentsForDisplay(segments) {
+    return segments.filter(Boolean).join(', ');
 }
 
 // Deliberately generic/participant-facing wording - never exposes

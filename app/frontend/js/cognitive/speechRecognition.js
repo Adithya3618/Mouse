@@ -13,6 +13,15 @@
 
 const DEFAULT_LANG = 'en-US';
 
+// Requesting multiple alternatives improves robustness against
+// misrecognition of similar-sounding digit sequences (see
+// cognitive/cognitiveSpeechSession.js, which surfaces any alternative that
+// differs from the primary result as a candidate - never used to silently
+// overwrite what was actually recognized). Not every browser honors this;
+// result objects may still come back with only 1 alternative regardless -
+// see _handleRecognitionResult below, which never assumes a fixed count.
+const DEFAULT_MAX_ALTERNATIVES = 3;
+
 function getNativeSpeechRecognitionCtor() {
     if (typeof window === 'undefined') {
         return null; // no DOM at all (Node test environment)
@@ -20,7 +29,7 @@ function getNativeSpeechRecognitionCtor() {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-function defaultRecognitionFactory(lang) {
+function defaultRecognitionFactory(lang, maxAlternatives) {
     const Ctor = getNativeSpeechRecognitionCtor();
     if (!Ctor) {
         throw new Error('SpeechRecognition is not supported in this browser.');
@@ -29,6 +38,7 @@ function defaultRecognitionFactory(lang) {
     recognition.lang = lang;
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.maxAlternatives = maxAlternatives;
     return recognition;
 }
 
@@ -51,12 +61,14 @@ export class SpeechRecognitionEngine {
     constructor({
         recognitionFactory = defaultRecognitionFactory,
         lang = DEFAULT_LANG,
+        maxAlternatives = DEFAULT_MAX_ALTERNATIVES,
         autoRestart = true,
         logger = () => {}
     } = {}) {
         this._recognitionFactory = recognitionFactory;
         this._usesDefaultFactory = recognitionFactory === defaultRecognitionFactory;
         this._lang = lang;
+        this._maxAlternatives = maxAlternatives;
         this._autoRestart = autoRestart;
         this._logger = logger;
 
@@ -141,7 +153,7 @@ export class SpeechRecognitionEngine {
 
         let recognition;
         try {
-            recognition = this._recognitionFactory(this._lang);
+            recognition = this._recognitionFactory(this._lang, this._maxAlternatives);
         } catch (error) {
             this._listening = false;
             this._emitError({ type: 'start-failed', message: error.message });
@@ -215,20 +227,34 @@ export class SpeechRecognitionEngine {
     _handleRecognitionResult(event) {
         for (let i = event.resultIndex; i < event.results.length; i += 1) {
             const result = event.results[i];
-            const alternative = result[0];
-            const transcript = alternative ? alternative.transcript : '';
+            const primary = result[0];
+            const transcript = primary ? primary.transcript : '';
             const timestamp = Date.now();
+
+            // Collect every alternative transcript the browser actually
+            // returned - never assume this._maxAlternatives were honored.
+            // Chrome typically returns as many as requested; other
+            // engines/browsers may still return only 1 regardless of the
+            // maxAlternatives setting above.
+            const alternatives = [];
+            for (let a = 0; a < result.length; a += 1) {
+                const candidate = result[a];
+                if (candidate && typeof candidate.transcript === 'string') {
+                    alternatives.push(candidate.transcript);
+                }
+            }
 
             if (result.isFinal) {
                 if (this.onFinalResult) {
                     this.onFinalResult({
                         transcript,
-                        confidence: alternative ? alternative.confidence : null,
+                        confidence: primary ? primary.confidence : null,
+                        alternatives,
                         timestamp
                     });
                 }
             } else if (this.onResult) {
-                this.onResult({ transcript, timestamp });
+                this.onResult({ transcript, alternatives, timestamp });
             }
         }
     }

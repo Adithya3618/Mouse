@@ -9,9 +9,10 @@ import { SpeechRecognitionEngine } from '../../app/frontend/js/cognitive/speechR
 // microphone or browser API is touched anywhere in this file.
 function createFakeRecognitionFactory() {
     const instances = [];
-    const factory = (lang) => {
+    const factory = (lang, maxAlternatives) => {
         const instance = {
             lang,
+            maxAlternatives,
             startCalls: 0,
             stopCalls: 0,
             abortCalls: 0,
@@ -55,6 +56,15 @@ function interimResult(transcript) {
     return result;
 }
 
+// Builds a result entry with MULTIPLE recognition alternatives, as Chrome
+// returns when maxAlternatives > 1 - alternatives[0] is the primary/best
+// guess, the rest are lower-confidence candidates.
+function finalResultWithAlternatives(transcripts, confidences = []) {
+    const result = transcripts.map((transcript, i) => ({ transcript, confidence: confidences[i] ?? null }));
+    result.isFinal = true;
+    return result;
+}
+
 test('isSupported() is false with no browser SpeechRecognition available (e.g. this Node test environment)', () => {
     assert.equal(SpeechRecognitionEngine.isSupported(), false);
     const engine = new SpeechRecognitionEngine();
@@ -90,6 +100,61 @@ test('start() constructs and starts a recognition instance, firing onStart when 
 
     factory.current().onstart();
     assert.equal(started, true);
+});
+
+test('maxAlternatives defaults to 3 and is set on the underlying recognition instance', () => {
+    const factory = createFakeRecognitionFactory();
+    const engine = new SpeechRecognitionEngine({ recognitionFactory: factory });
+    engine.start();
+    assert.equal(factory.current().maxAlternatives, 3);
+});
+
+test('maxAlternatives is configurable via the constructor', () => {
+    const factory = createFakeRecognitionFactory();
+    const engine = new SpeechRecognitionEngine({ recognitionFactory: factory, maxAlternatives: 1 });
+    engine.start();
+    assert.equal(factory.current().maxAlternatives, 1);
+});
+
+test('a final result with multiple alternatives exposes all of them, primary transcript first', () => {
+    const factory = createFakeRecognitionFactory();
+    const engine = new SpeechRecognitionEngine({ recognitionFactory: factory });
+    const finalCalls = [];
+    engine.onFinalResult = (r) => finalCalls.push(r);
+
+    engine.start();
+    factory.current().onresult(makeResultEvent([
+        finalResultWithAlternatives(['960 967 964 961', '962 967 964 961', '960 967 965 961'], [0.9, 0.4, 0.3])
+    ]));
+
+    assert.equal(finalCalls.length, 1);
+    assert.equal(finalCalls[0].transcript, '960 967 964 961');
+    assert.deepEqual(finalCalls[0].alternatives, ['960 967 964 961', '962 967 964 961', '960 967 965 961']);
+});
+
+test('a final result with only one alternative (browser did not honor maxAlternatives) is handled without assuming a fixed count', () => {
+    const factory = createFakeRecognitionFactory();
+    const engine = new SpeechRecognitionEngine({ recognitionFactory: factory });
+    const finalCalls = [];
+    engine.onFinalResult = (r) => finalCalls.push(r);
+
+    engine.start();
+    factory.current().onresult(makeResultEvent([finalResult('960 967 964 961')]));
+
+    assert.equal(finalCalls[0].transcript, '960 967 964 961');
+    assert.deepEqual(finalCalls[0].alternatives, ['960 967 964 961']);
+});
+
+test('interim results also expose their alternatives array', () => {
+    const factory = createFakeRecognitionFactory();
+    const engine = new SpeechRecognitionEngine({ recognitionFactory: factory });
+    const interimCalls = [];
+    engine.onResult = (r) => interimCalls.push(r);
+
+    engine.start();
+    factory.current().onresult(makeResultEvent([interimResult('nine hundred')]));
+
+    assert.deepEqual(interimCalls[0].alternatives, ['nine hundred']);
 });
 
 test('interim results fire onResult; final results fire onFinalResult, not onResult', () => {
