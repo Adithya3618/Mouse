@@ -318,6 +318,110 @@ test('end-to-end: the full pipeline scores an adaptive-continuation example exac
     assert.equal(results.cognitiveAccuracy, 80);
 });
 
+// --- Robustness pass (researcher request, 2026): reliable segmentation of
+// a spoken number sequence into independent responses, regardless of
+// whether the browser delivers them as one recognition event or several
+// (pauses), in digit or word form, with or without alternatives/
+// duplicates. Response boundaries always come from parsed number
+// segments, never from recognition event boundaries. ---
+
+test('multiple word-form numbers inside ONE final recognition event become independent responses (the numberParser segmentation fix)', () => {
+    const { session, engine } = createSession();
+    session.start();
+
+    engine().onFinalResult({
+        transcript: 'nine hundred sixty nine hundred fifty seven nine hundred fifty four',
+        timestamp: 1
+    });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [960, 957, 954]);
+    assert.equal(results.numberOfResponses, 3);
+    // The raw transcript for this one recognition event is preserved
+    // exactly, even though it was split into 3 responses.
+    assert.ok(results.rawRecognitionEvents[0].rawTranscript.includes('nine hundred sixty nine hundred fifty seven nine hundred fifty four'));
+});
+
+test('a spoken sequence delivered as SEPARATE final recognition events (simulating pauses between numbers) still produces one ordered set of independent responses', () => {
+    const { session, engine } = createSession();
+    session.start();
+
+    // Each number arrives as its own final event, several seconds apart -
+    // exactly what a participant pausing between numbers looks like.
+    engine().onFinalResult({ transcript: '960', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '957', timestamp: 3400 });
+    engine().onFinalResult({ transcript: '954', timestamp: 6100 });
+    engine().onFinalResult({ transcript: '951', timestamp: 8900 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [960, 957, 954, 951]);
+    assert.equal(results.numberOfResponses, 4);
+    assert.equal(results.rawRecognitionEvents.length, 4, 'response boundaries came from 4 separate recognition events here, not from splitting one transcript');
+});
+
+test('response boundaries come from parsed number segments, not recognition event boundaries - a mix of single- and multi-number events combines correctly', () => {
+    const { session, engine } = createSession();
+    session.start();
+
+    engine().onFinalResult({ transcript: '960', timestamp: 1000 }); // 1 number, 1 event
+    engine().onFinalResult({ transcript: '957 954', timestamp: 4000 }); // 2 numbers, 1 event (browser grouped them)
+    engine().onFinalResult({ transcript: '951', timestamp: 7000 }); // 1 number, 1 event
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [960, 957, 954, 951]);
+    assert.equal(results.numberOfResponses, 4, '4 independent responses regardless of how they were grouped into 3 recognition events');
+});
+
+test('an interim result followed by its final result: only the final is parsed/scored, and the interim never leaks into stored responses', () => {
+    const { session, engine } = createSession();
+    session.start();
+
+    engine().onResult({ transcript: 'nine hundred', timestamp: 1 });
+    assert.equal(session.getInterimTranscript(), 'nine hundred');
+    assert.equal(session.getResults().numberOfResponses, 0, 'an interim result must never be scored as a response');
+
+    engine().onResult({ transcript: 'nine hundred sixty', timestamp: 2 }); // revised interim, still not final
+    assert.equal(session.getInterimTranscript(), 'nine hundred sixty');
+    assert.equal(session.getResults().numberOfResponses, 0);
+
+    engine().onFinalResult({ transcript: 'nine hundred sixty', timestamp: 3 });
+    assert.equal(session.getInterimTranscript(), '', 'interim clears once finalized');
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [960]);
+    assert.equal(results.numberOfResponses, 1, 'exactly one response, not one per interim revision');
+});
+
+test('combined scenario: word-form segmentation + alternatives + a duplicate event, exactly as they would occur together in one phase', () => {
+    const { session, engine } = createSession({ startingNumber: 963 }); // subtractionValue 3 (default)
+    session.start();
+
+    // First utterance: two word-form numbers in one event, with a
+    // misrecognition on the second (962 heard, 960 was an alternative).
+    engine().onFinalResult({
+        transcript: 'nine hundred sixty nine hundred sixty two',
+        alternatives: ['nine hundred sixty nine hundred sixty two', 'nine hundred sixty nine hundred sixty'],
+        timestamp: 1000
+    });
+    // Browser glitch: the same event fires again almost immediately.
+    engine().onFinalResult({
+        transcript: 'nine hundred sixty nine hundred sixty two',
+        alternatives: ['nine hundred sixty nine hundred sixty two', 'nine hundred sixty nine hundred sixty'],
+        timestamp: 1100
+    });
+    // A later, genuinely new number.
+    engine().onFinalResult({ transcript: '957', timestamp: 4000 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [960, 962, 957], 'the duplicate event contributed no extra responses');
+    assert.equal(results.numberOfResponses, 3);
+    assert.equal(results.rawRecognitionEvents.length, 3, 'all 3 raw events are preserved in the audit trail, including the duplicate');
+    assert.equal(results.rawRecognitionEvents[1].treatedAsDuplicate, true);
+
+    const secondResponse = results.responses[1];
+    assert.equal(secondResponse.parsedNumber, 962, 'raw recognition preserved - never silently replaced with the alternative 960');
+    assert.deepEqual(secondResponse.alternativeNumbers, [960]);
+});
+
 test('onUpdate() notifies subscribers on mic state, interim, final, and error changes; unsubscribe stops further notifications', () => {
     const { session, engine } = createSession();
     let updateCount = 0;

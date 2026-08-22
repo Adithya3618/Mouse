@@ -24,6 +24,10 @@ test('filters out empty/falsy segments without leaving stray commas', () => {
     assert.equal(formatFinalSegmentsForDisplay(['960', '', '957']), '960, 957');
 });
 
+test('the exact requested display format: [960, 957, 954, 951] -> "960, 957, 954, 951"', () => {
+    assert.equal(formatFinalSegmentsForDisplay(['960', '957', '954', '951']), '960, 957, 954, 951');
+});
+
 test('does not mutate the input array', () => {
     const segments = ['960', '957'];
     formatFinalSegmentsForDisplay(segments);

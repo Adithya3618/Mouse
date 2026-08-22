@@ -56,3 +56,57 @@ test('parseNumbersFromTranscript returns an empty array for empty transcripts', 
     assert.deepEqual(parseNumbersFromTranscript(''), []);
     assert.deepEqual(parseNumbersFromTranscript(null), []);
 });
+
+// --- Robustness pass (researcher request, 2026): reliably segmenting a
+// spoken sequence of numbers, including continuous word-form speech with
+// no pause-driven punctuation. See the module-level comment on
+// NUMBER_SEGMENT_PATTERN above for the specific bug this fixes. ---
+
+test('"960" parses to 960', () => {
+    assert.deepEqual(parseNumbersFromTranscript('960').map((r) => r.value), [960]);
+});
+
+test('"nine hundred sixty" parses to 960', () => {
+    assert.deepEqual(parseNumbersFromTranscript('nine hundred sixty').map((r) => r.value), [960]);
+});
+
+test('"nine hundred and sixty" parses to 960', () => {
+    assert.deepEqual(parseNumbersFromTranscript('nine hundred and sixty').map((r) => r.value), [960]);
+});
+
+test('"960 957 954" (space-separated digits) parses to [960, 957, 954]', () => {
+    assert.deepEqual(parseNumbersFromTranscript('960 957 954').map((r) => r.value), [960, 957, 954]);
+});
+
+test('"960, 957, 954" (comma-separated digits) parses to [960, 957, 954]', () => {
+    assert.deepEqual(parseNumbersFromTranscript('960, 957, 954').map((r) => r.value), [960, 957, 954]);
+});
+
+test('BUG FIX: three consecutive word-form numbers with no separating punctuation are segmented correctly, not merged/lost', () => {
+    // Before the fix, the greedy tens+ones lookahead swallowed the
+    // leading "nine" of the second number into the first ("sixty nine" =
+    // 69), producing [969, 954] and silently dropping 957 entirely.
+    const results = parseNumbersFromTranscript('nine hundred sixty nine hundred fifty seven nine hundred fifty four');
+    assert.deepEqual(results.map((r) => r.value), [960, 957, 954]);
+    assert.equal(results.every((r) => r.resolved), true);
+});
+
+test('a mix of digit-form and word-form numbers in the same transcript segments correctly', () => {
+    const results = parseNumbersFromTranscript('960 nine hundred fifty seven 954');
+    assert.deepEqual(results.map((r) => r.value), [960, 957, 954]);
+});
+
+test('regression: a legitimate compound tens+ones number is still parsed as ONE number, not split at the word boundary', () => {
+    // "sixty four" here has nothing ambiguous following "four" - the fix
+    // must not affect this case.
+    assert.deepEqual(parseNumbersFromTranscript('nine hundred sixty four').map((r) => r.value), [964]);
+});
+
+test('regression: a standalone number ending in a tens+ones compound is still parsed whole when nothing follows it', () => {
+    assert.deepEqual(parseNumbersFromTranscript('nine hundred sixty nine').map((r) => r.value), [969]);
+});
+
+test('normalization: trailing "." or "," on an otherwise-clean digit string still resolves to the same numeric value, without altering the raw text', () => {
+    assert.deepEqual(parseSpokenNumber('960.'), { raw: '960.', value: 960, resolved: true });
+    assert.deepEqual(parseSpokenNumber('960,'), { raw: '960,', value: 960, resolved: true });
+});

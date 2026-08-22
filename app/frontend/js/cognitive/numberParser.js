@@ -27,10 +27,23 @@ const TENS_VALUES = Object.fromEntries(TENS_WORDS.map((word, i) => [word, (i + 2
 // randomStartingNumberRange) - a reasonable, documented starting point that
 // can be broadened later (see module comment above) without touching
 // speechScoring.js or speechRecognition.js.
+//
+// The trailing (?![\s-]+hundred) after the optional ones-word suffix is a
+// segmentation fix: when a participant counts backward continuously with
+// no pause-driven punctuation ("nine hundred sixty nine hundred fifty
+// seven"), a bare greedy match would read "sixty nine" as one compound
+// number (69), swallowing the NEXT number's leading "nine" into the
+// current match and losing the boundary between them entirely. A ones-word
+// immediately followed by "hundred" is unambiguously the start of the
+// next spoken number, not a compound suffix of this one - a single
+// response never contains "hundred" twice - so it must never be
+// consumed here. This does not affect any legitimate single number
+// (e.g. "nine hundred sixty four" still matches whole, since "four" here
+// is not followed by "hundred").
 const NUMBER_SEGMENT_PATTERN = new RegExp(
     '(\\d+)' +
     '|' +
-    `(?:${ONES_WORDS.join('|')})\\s+hundred(?:\\s+(?:and\\s+)?(?:${TEENS_WORDS.join('|')}|(?:${TENS_WORDS.join('|')})(?:[\\s-]+(?:${ONES_WORDS.join('|')}))?))?`,
+    `(?:${ONES_WORDS.join('|')})\\s+hundred(?:\\s+(?:and\\s+)?(?:${TEENS_WORDS.join('|')}|(?:${TENS_WORDS.join('|')})(?:[\\s-]+(?:${ONES_WORDS.join('|')})(?![\\s-]+hundred))?))?`,
     'gi'
 );
 
@@ -52,8 +65,16 @@ export function parseSpokenNumber(text) {
         return { raw, value: null, resolved: false };
     }
 
-    if (/^\d+$/.test(raw)) {
-        return { raw, value: Number.parseInt(raw, 10), resolved: true };
+    // Normalizes harmless trailing punctuation ("960." / "960,") before
+    // the digit check below - normalization only, for a value equal to
+    // "960" either way. `raw` itself (returned in every branch) is always
+    // the original, unstripped text - never altered. In practice
+    // parseNumbersFromTranscript() below already extracts segments
+    // without trailing punctuation, so this mainly guards a direct call
+    // to this function with less-clean input.
+    const digitCandidate = raw.replace(/[.,]+$/, '');
+    if (/^\d+$/.test(digitCandidate)) {
+        return { raw, value: Number.parseInt(digitCandidate, 10), resolved: true };
     }
 
     const words = normalizeWords(raw);
