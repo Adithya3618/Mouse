@@ -422,6 +422,247 @@ test('combined scenario: word-form segmentation + alternatives + a duplicate eve
     assert.deepEqual(secondResponse.alternativeNumbers, [960]);
 });
 
+// --- Fragment segmentation (researcher request, 2026): Chrome's own
+// utterance endpointer can misfire mid-number, finalizing e.g. "8" then
+// "65" as two separate final events for one spoken "865". See the
+// module-level comment on FRAGMENT_COMMIT_DEBOUNCE_MS in
+// cognitiveSpeechSession.js for the full strategy. A controllable
+// fragment-commit scheduler is used here so debounce-timeout behavior
+// (case where nothing else arrives) can be tested deterministically,
+// without a real setTimeout wait. ---
+
+function createControllableFragmentScheduler() {
+    const scheduled = [];
+    return {
+        scheduleFragmentCommit: (callback) => {
+            const handle = { callback, cleared: false };
+            scheduled.push(handle);
+            return handle;
+        },
+        clearFragmentCommit: (handle) => { handle.cleared = true; },
+        fireLatestPending: () => {
+            const pending = scheduled.filter((h) => !h.cleared);
+            const handle = pending[pending.length - 1];
+            assert.ok(handle, 'fireLatestPending() called with nothing pending');
+            handle.callback();
+        },
+        hasPending: () => scheduled.some((h) => !h.cleared)
+    };
+}
+
+// A. "8" + "65" -> 865
+test('fragment segmentation A: "8" then "65" arriving close together are combined into 865, not recorded as 8 and 65', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '65', timestamp: 1050 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [865]);
+    assert.equal(results.numberOfResponses, 1);
+    assert.equal(results.responses[0].mergedFromFragments, true);
+});
+
+// B. "865" + "862" + "859" -> 865, 862, 859 (three ALREADY-COMPLETE numbers
+// must never be merged into one another, regardless of how close together
+// their events arrive)
+test('fragment segmentation B: three already-complete numbers stay independent, never merged', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '865', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '862', timestamp: 1300 });
+    engine().onFinalResult({ transcript: '859', timestamp: 1600 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [865, 862, 859]);
+    assert.equal(results.numberOfResponses, 3);
+    assert.ok(results.responses.every((r) => r.mergedFromFragments === false));
+});
+
+// C. 865 [pause] 862 -> two numbers, never "865862"
+test('fragment segmentation C: a real pause between two complete numbers never produces a merged "865862"', () => {
+    const { session, engine } = createSession({ startingNumber: 865, fragmentCommitDebounceMs: 400 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '865', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '862', timestamp: 2500 }); // 1.5s later, well past the debounce window
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [865, 862]);
+    assert.equal(results.numberOfResponses, 2);
+});
+
+// D. A wrong response mid-sequence: adaptive scoring continues from the
+// actual recognized (wrong) value, exactly as before - segmentation must
+// not disturb this in any way.
+test('fragment segmentation D: adaptive scoring after a wrong response continues from the actual recognized number, unaffected by segmentation', () => {
+    const { session, engine } = createSession({ startingNumber: 865 }); // subtractionValue 3 (default)
+    session.start();
+
+    for (const [n, t] of [[862, 1000], [861, 1400], [858, 1800], [855, 2200]]) {
+        engine().onFinalResult({ transcript: String(n), timestamp: t });
+    }
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [862, 861, 858, 855]);
+    assert.deepEqual(results.expectedNumbers, [862, 859, 858, 855]);
+    assert.deepEqual(results.responses.map((r) => r.correctness), ['correct', 'incorrect', 'correct', 'correct']);
+    // 861 is wrong (859 was expected), but the NEXT expected number (858)
+    // is derived from the actual recognized 861, not the mathematically
+    // expected 859 - the existing, unmodified adaptive scoring rule.
+    assert.equal(results.responses[2].expectedNumber, 858, '861 - 3, not 859 - 3');
+});
+
+// E. A single number split across MORE than two recognition events.
+test('fragment segmentation E: a number split across three separate recognition events (e.g. "8", "6", "5") still reconstructs to 865', () => {
+    const { session, engine } = createSession({ startingNumber: 865, fragmentCommitDebounceMs: 400 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '6', timestamp: 1080 });
+    engine().onFinalResult({ transcript: '5', timestamp: 1150 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [865]);
+    assert.equal(results.responses[0].mergedFromFragments, true);
+});
+
+// F. Numbers spoken continuously with very short pauses - must not
+// require a long pause, and must not merge complete numbers together.
+test('fragment segmentation F: complete numbers spoken with very short (150ms) pauses between them are still recorded as independent responses', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '865', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '862', timestamp: 1150 });
+    engine().onFinalResult({ transcript: '859', timestamp: 1300 });
+    engine().onFinalResult({ transcript: '856', timestamp: 1450 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [865, 862, 859, 856]);
+    assert.equal(results.numberOfResponses, 4);
+});
+
+// G. Do not accidentally merge two genuinely separate numbers - word-form
+// variant, and a case where the running expected length has already
+// adapted downward.
+test('fragment segmentation G: two genuinely separate word-form numbers spoken close together are not merged', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: 'eight hundred sixty five', timestamp: 1000 });
+    engine().onFinalResult({ transcript: 'eight hundred sixty two', timestamp: 1150 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [865, 862]);
+});
+
+test('fragment segmentation G2: once the sequence legitimately drops to fewer digits, a later short number is still recorded correctly (delayed, never lost or merged)', () => {
+    const scheduler = createControllableFragmentScheduler();
+    const { session, engine } = createSession({
+        startingNumber: 104, // subtractionValue 3 (default)
+        scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
+        clearFragmentCommit: scheduler.clearFragmentCommit
+    });
+    session.start();
+
+    engine().onFinalResult({ transcript: '101', timestamp: 1000 }); // 3 digits, commits normally, updates expected length to 3
+    engine().onFinalResult({ transcript: '98', timestamp: 1300 }); // now genuinely 2 digits - below the still-3 expected length
+
+    // "98" alone doesn't immediately look "complete" by the digit-length
+    // heuristic (a known, documented limitation - see the final report),
+    // so it is held pending; nothing else arrives to merge with it, so it
+    // must still be committed via the debounce flush, not lost or merged
+    // with anything else.
+    assert.deepEqual(session.getResults().parsedNumbers, [101], '98 not yet committed - still within its debounce window');
+    scheduler.fireLatestPending();
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [101, 98], '98 must still be recorded correctly - delayed, never dropped or corrupted');
+});
+
+// Explicit debounce-timeout test: a fragment with NOTHING arriving after
+// it must still be committed (not lost), once the debounce window elapses.
+test('a pending fragment with no continuation is committed as-is once the debounce window elapses, never silently dropped', () => {
+    const scheduler = createControllableFragmentScheduler();
+    const { session, engine } = createSession({
+        startingNumber: 865,
+        scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
+        clearFragmentCommit: scheduler.clearFragmentCommit
+    });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 }); // looks incomplete (1 digit, expects 3) - buffered
+    assert.equal(session.getResults().numberOfResponses, 0, 'not yet committed - still waiting for a possible continuation');
+    assert.equal(scheduler.hasPending(), true);
+
+    scheduler.fireLatestPending(); // simulates the debounce window elapsing with nothing more arriving
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [8], 'committed as-is - the raw recognized "8" is preserved, never dropped or guessed at');
+    assert.equal(results.responses[0].mergedFromFragments, true);
+});
+
+test('a continuation that arrives before the debounce window elapses cancels the pending timeout and merges instead', () => {
+    const scheduler = createControllableFragmentScheduler();
+    const { session, engine } = createSession({
+        startingNumber: 865,
+        scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
+        clearFragmentCommit: scheduler.clearFragmentCommit
+    });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    assert.equal(scheduler.hasPending(), true);
+
+    engine().onFinalResult({ transcript: '65', timestamp: 1050 }); // arrives well within the debounce window
+    assert.equal(scheduler.hasPending(), false, 'the pending timeout must be cancelled once merged');
+
+    assert.deepEqual(session.getResults().parsedNumbers, [865]);
+});
+
+// stop() must flush a still-pending fragment rather than lose it when the
+// phase ends mid-debounce-window.
+test('stop() commits a still-pending fragment instead of losing it when the phase ends mid-debounce-window', () => {
+    const scheduler = createControllableFragmentScheduler();
+    const { session, engine } = createSession({
+        startingNumber: 865,
+        scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
+        clearFragmentCommit: scheduler.clearFragmentCommit
+    });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    assert.equal(session.getResults().numberOfResponses, 0);
+
+    session.stop();
+
+    assert.deepEqual(session.getResults().parsedNumbers, [8]);
+    assert.equal(scheduler.hasPending(), false, 'the pending timer must be cleared once flushed by stop()');
+});
+
+// A trailing fragment of a multi-number event correctly waits for its own
+// continuation, while the earlier, already-complete numbers in that same
+// event commit immediately.
+test('a multi-number event ending in an incomplete trailing fragment commits the earlier numbers immediately and buffers only the trailing piece', () => {
+    const scheduler = createControllableFragmentScheduler();
+    const { session, engine } = createSession({
+        startingNumber: 865,
+        scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
+        clearFragmentCommit: scheduler.clearFragmentCommit
+    });
+    session.start();
+
+    engine().onFinalResult({ transcript: '862 8', timestamp: 1000 }); // "8" here is the start of the next number, cut off
+    assert.deepEqual(session.getResults().parsedNumbers, [862], '862 commits immediately - it already looks complete');
+    assert.equal(scheduler.hasPending(), true, 'the trailing "8" is held pending, not discarded');
+
+    engine().onFinalResult({ transcript: '61', timestamp: 1080 });
+    assert.deepEqual(session.getResults().parsedNumbers, [862, 861]);
+});
+
 test('onUpdate() notifies subscribers on mic state, interim, final, and error changes; unsubscribe stops further notifications', () => {
     const { session, engine } = createSession();
     let updateCount = 0;

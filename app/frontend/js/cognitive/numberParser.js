@@ -138,6 +138,31 @@ export function parseSpokenNumber(text) {
 // segment found. If nothing number-like is found at all, returns a single
 // unresolved entry preserving the whole raw transcript, per the
 // "never guess silently" rule above.
+// Returns true if `text` consists ENTIRELY of recognized number-vocabulary
+// (digits, or ones/teens/tens/"hundred"/"and" words), even when it does
+// NOT resolve into a complete number on its own - e.g. "nine" (missing
+// its "hundred" anchor) or "hundred sixty" (missing its leading ones-word).
+// Used by cognitive/cognitiveSpeechSession.js to distinguish a genuine
+// speech-recognition FRAGMENT of a number - worth buffering briefly in
+// case the rest of it arrives in the next recognition event - from
+// unrelated/unintelligible speech, which must never be held pending a
+// merge attempt. Reuses this file's own word lists; no vocabulary is
+// duplicated anywhere else.
+export function looksLikeNumberFragment(text) {
+    const raw = (text ?? '').trim();
+    if (!raw) {
+        return false;
+    }
+    if (/^\d+$/.test(raw.replace(/[.,]+$/, ''))) {
+        return true;
+    }
+    const words = normalizeWords(raw);
+    if (words.length === 0) {
+        return false;
+    }
+    return words.every((word) => word === 'and' || word === 'hundred' || word in ONES_VALUES || word in TEENS_VALUES || word in TENS_VALUES);
+}
+
 export function parseNumbersFromTranscript(transcript) {
     const text = (transcript ?? '').trim();
     if (!text) {
