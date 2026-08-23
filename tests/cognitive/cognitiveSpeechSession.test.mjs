@@ -1076,3 +1076,78 @@ test('onUpdate() notifies subscribers on mic state, interim, final, and error ch
     engine().onError({ type: 'network', message: 'x' });
     assert.equal(updateCount, countBeforeUnsubscribe, 'no further notifications after unsubscribe');
 });
+
+// --- Digit-by-digit speech, end to end through the real session pipeline
+// (upgrade, 2026) - see tests/cognitive/numberParser.test.mjs for the
+// parser unit tests in isolation; these confirm the same fallback is
+// actually wired into CognitiveSpeechSession's transcript handling, not
+// just reachable in isolation. ---
+
+test('digit-by-digit: "eight four eight" in one final event resolves to 848 immediately', () => {
+    const { session, engine } = createSession({ startingNumber: 947 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight four eight', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [848]);
+});
+
+test('digit-by-digit: stutter "eight eight eight four four four eight" collapses to 848', () => {
+    const { session, engine } = createSession({ startingNumber: 947 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight eight eight four four four eight', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [848]);
+});
+
+test('digit-by-digit: fillers "eight um um um four eight" resolve to 848', () => {
+    const { session, engine } = createSession({ startingNumber: 947 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight um um um four eight', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [848]);
+});
+
+test('digit-by-digit: "8 4 8" (single-digit runs in one event) is reconstructed as one 848 response, not three separate 1-digit responses', () => {
+    const { session, engine } = createSession({ startingNumber: 947 });
+    session.start();
+    engine().onFinalResult({ transcript: '8 4 8', timestamp: 1000 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [848]);
+    assert.equal(results.numberOfResponses, 1);
+});
+
+test('digit-by-digit: genuinely repeated digits are preserved - "eight eight four" is 884, not corrupted to 84', () => {
+    const { session, engine } = createSession({ startingNumber: 947 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight eight four', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [884]);
+});
+
+test('digit-by-digit: an incomplete response ("eight four") is held pending, not committed, until it either completes or the debounce window elapses', () => {
+    const scheduler = createControllableFragmentScheduler();
+    const { session, engine } = createSession({
+        startingNumber: 947,
+        scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
+        clearFragmentCommit: scheduler.clearFragmentCommit
+    });
+    session.start();
+
+    engine().onFinalResult({ transcript: 'eight four', timestamp: 1000 });
+    assert.equal(session.getResults().numberOfResponses, 0, 'not yet committed - only 2 of the required 3 digits recognized so far');
+    assert.equal(scheduler.hasPending(), true);
+
+    scheduler.fireLatestPending(); // nothing more arrives before the debounce window elapses
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [84], 'preserved exactly as recognized so far, never dropped or guessed at');
+    assert.equal(results.responses[0].resolved, false);
+    assert.equal(results.responses[0].incomplete, true);
+});
+
+test('digit-by-digit: raw transcript is preserved verbatim alongside the parsed number', () => {
+    const { session, engine } = createSession({ startingNumber: 947 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight um um eight eight four four four eight', timestamp: 1000 });
+
+    const results = session.getResults();
+    assert.equal(results.rawTranscript, 'eight um um eight eight four four four eight', 'the original browser transcript is never destroyed by digit-sequence parsing');
+    assert.deepEqual(results.parsedNumbers, [848]);
+});

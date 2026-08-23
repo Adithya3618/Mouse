@@ -312,7 +312,7 @@ export class CognitiveSpeechSession {
             }
         }
 
-        const segments = parseNumbersFromTranscript(textToParse);
+        const segments = parseNumbersFromTranscript(textToParse, { expectedDigits: this._expectedResponseDigits });
         if (segments.length === 0) {
             return;
         }
@@ -378,7 +378,7 @@ export class CognitiveSpeechSession {
     // short fragments, e.g. after the sequence crosses below 100, from
     // being forced together into something like "9895").
     _looksLikeContinuation(pendingFragment, transcript) {
-        const segments = parseNumbersFromTranscript(transcript);
+        const segments = parseNumbersFromTranscript(transcript, { expectedDigits: this._expectedResponseDigits });
         if (segments.length === 0) {
             return true;
         }
@@ -464,7 +464,7 @@ export class CognitiveSpeechSession {
         this._pendingFragment = null;
         this._clearScheduledFragmentCommit();
 
-        for (const segment of parseNumbersFromTranscript(fragment.rawTranscript)) {
+        for (const segment of parseNumbersFromTranscript(fragment.rawTranscript, { expectedDigits: this._expectedResponseDigits })) {
             this._commitSegment(segment, [], fragment.timestamp, fragment.sourceEventIndexes, fragment.sourceRawTranscripts, {
                 incomplete: !this._looksComplete(segment)
             });
