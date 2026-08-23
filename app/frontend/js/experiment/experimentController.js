@@ -261,6 +261,8 @@ export class ExperimentController {
                 subtractionValue: phaseDescriptor.subtractionValue,
                 startingNumber: extra.startingNumber,
                 scoringMode: this._config.cognitiveScoringMode,
+                expectedResponseDigits: this._config.expectedResponseDigits,
+                speechRecognitionLanguage: this._config.speechRecognitionLanguage,
                 logger: this._logger
             });
             this._currentCognitiveSpeechSession.start();

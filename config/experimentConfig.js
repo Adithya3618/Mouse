@@ -11,23 +11,23 @@
 
 export const experimentConfig = {
     // 2-minute motor-only mouse baseline at the start of the experiment.
-    motorBaselineDurationSeconds: 20,
+    motorBaselineDurationSeconds: 120,
 
     // The three serial-subtraction conditions, in the order they run.
     subtractionValues: [3, 7, 17],
 
     // 2-minute subtraction-only block for each condition (no mouse task).
-    subtractionOnlyDurationSeconds: 20,
+    subtractionOnlyDurationSeconds: 120,
 
     // 2-minute combined subtraction + mouse block for each condition.
-    dualTaskDurationSeconds: 20,
+    dualTaskDurationSeconds: 120,
 
     // 90-second recovery break after EVERY task - motor baseline, each
     // subtraction-only block, and each dual-task block. There is no
     // separate "transition" phase anymore; the recovery period after a
     // subtraction-only block is what precedes that condition's dual-task
     // block.
-    recoveryDurationSeconds: 10,
+    recoveryDurationSeconds: 90,
 
     // Length of the "3, 2, 1" countdown shown immediately before EVERY
     // active 2-minute task (motor baseline, each subtraction-only block,
@@ -54,7 +54,25 @@ export const experimentConfig = {
     // sequence from startingNumber. Change this value to switch scoring
     // methodology for all future sessions; it does not require touching
     // cognitive/speechScoring.js itself.
-    cognitiveScoringMode: 'adaptive'
+    cognitiveScoringMode: 'adaptive',
+
+    // Every participant response in this protocol is expected to be
+    // exactly this many digits (the starting number is always drawn from
+    // randomStartingNumberRange above, which is 3-digit). Used only as a
+    // speech-recognition SEGMENTATION signal - deciding whether a
+    // recognized fragment like "8" is likely incomplete and should wait
+    // for a continuation - never to alter, guess, or "correct" a
+    // recognized value. See cognitive/cognitiveSpeechSession.js.
+    expectedResponseDigits: 3,
+
+    // Passed through to the browser's SpeechRecognition/
+    // webkitSpeechRecognition engine as its recognition language/locale.
+    // Participants may have different English accents; this is the only
+    // lever the browser-native API offers for that (see
+    // cognitive/speechRecognition.js) - it does not guarantee accurate
+    // recognition across accents, and no AI-based accent detection is
+    // used to choose or adjust it automatically.
+    speechRecognitionLanguage: 'en-US'
 };
 
 export default experimentConfig;

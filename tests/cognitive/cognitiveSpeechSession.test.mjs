@@ -41,6 +41,35 @@ function createSession(overrides = {}) {
     return { session, engine: () => fakeEngine };
 }
 
+test('speechRecognitionLanguage is threaded through to the engine factory (accent/locale configurability)', () => {
+    let capturedOptions = null;
+    const session = new CognitiveSpeechSession({
+        subtractionValue: 3,
+        startingNumber: 947,
+        speechRecognitionLanguage: 'en-GB',
+        engineFactory: (options) => {
+            capturedOptions = options;
+            return createFakeEngine();
+        }
+    });
+    session.start();
+    assert.equal(capturedOptions.lang, 'en-GB');
+});
+
+test('speechRecognitionLanguage defaults to en-US when not specified', () => {
+    let capturedOptions = null;
+    const session = new CognitiveSpeechSession({
+        subtractionValue: 3,
+        startingNumber: 947,
+        engineFactory: (options) => {
+            capturedOptions = options;
+            return createFakeEngine();
+        }
+    });
+    session.start();
+    assert.equal(capturedOptions.lang, 'en-US');
+});
+
 test('start() begins listening and records a phaseStartTime', () => {
     const { session, engine } = createSession();
     assert.equal(session.phaseStartTime, null);
@@ -300,7 +329,12 @@ test('getRawResponseSegments() returns the per-number segments as an array, in o
 // for the pure-scoring-layer version of this same worked example) ---
 
 test('end-to-end: the full pipeline scores an adaptive-continuation example exactly like speechScoring.js does in isolation', () => {
-    const { session, engine } = createSession({ startingNumber: 97 }); // subtractionValue 3 (default)
+    // expectedResponseDigits: 2 here because this worked example (and the
+    // matching speechScoring.test.mjs one) uses 2-digit numbers - this
+    // test is verifying SCORING math end-to-end, not the study's default
+    // 3-digit segmentation target, and the digit target is configurable
+    // precisely so a scenario like this can state its own expectation.
+    const { session, engine } = createSession({ startingNumber: 97, expectedResponseDigits: 2 }); // subtractionValue 3 (default)
     session.start();
 
     for (const n of [94, 91, 87, 84, 81]) {
@@ -559,28 +593,72 @@ test('fragment segmentation G: two genuinely separate word-form numbers spoken c
     assert.deepEqual(results.parsedNumbers, [865, 862]);
 });
 
-test('fragment segmentation G2: once the sequence legitimately drops to fewer digits, a later short number is still recorded correctly (delayed, never lost or merged)', () => {
+// POLICY (researcher request, 2026): every response in this study's
+// protocol is expected to be exactly `expectedResponseDigits` digits
+// (default 3, configurable - see DEFAULT_EXPECTED_RESPONSE_DIGITS). This
+// is now a FIXED target for the whole phase, not an adaptive reference
+// that tracks the last committed value's own length - a deliberate
+// change from an earlier version of this file. The consequence: if the
+// sequence's actual arithmetic legitimately drops below 100, a 2-digit
+// response no longer gets scored as a normal correct/incorrect answer -
+// it is preserved and flagged `incomplete: true` / `resolved: false`
+// (routes into speechScoring.js's existing "unresolved" bucket) instead,
+// since it never reached the expected length. The SAFETY property this
+// was built to guarantee - two separate short numbers must never be
+// concatenated into a corrupted value like "9895" - still holds
+// unconditionally; only the "gracefully score a legitimate short answer"
+// behavior from that earlier version no longer applies with the default
+// 3-digit target. A researcher who expects genuinely shorter responses in
+// a given phase can set expectedResponseDigits accordingly (see the
+// end-to-end adaptive-continuation test above for exactly that).
+test('once the sequence legitimately drops below the expected digit count, a short response is preserved but flagged incomplete rather than scored as a normal answer', () => {
     const scheduler = createControllableFragmentScheduler();
     const { session, engine } = createSession({
-        startingNumber: 104, // subtractionValue 3 (default)
+        startingNumber: 104, // subtractionValue 3 (default), expectedResponseDigits 3 (default)
         scheduleFragmentCommit: scheduler.scheduleFragmentCommit,
         clearFragmentCommit: scheduler.clearFragmentCommit
     });
     session.start();
 
-    engine().onFinalResult({ transcript: '101', timestamp: 1000 }); // 3 digits, commits normally, updates expected length to 3
-    engine().onFinalResult({ transcript: '98', timestamp: 1300 }); // now genuinely 2 digits - below the still-3 expected length
+    engine().onFinalResult({ transcript: '101', timestamp: 1000 }); // 3 digits - complete, commits normally
+    engine().onFinalResult({ transcript: '98', timestamp: 1400 }); // genuinely 2 digits - below the fixed 3-digit target
 
-    // "98" alone doesn't immediately look "complete" by the digit-length
-    // heuristic (a known, documented limitation - see the final report),
-    // so it is held pending; nothing else arrives to merge with it, so it
-    // must still be committed via the debounce flush, not lost or merged
-    // with anything else.
-    assert.deepEqual(session.getResults().parsedNumbers, [101], '98 not yet committed - still within its debounce window');
-    scheduler.fireLatestPending();
+    assert.equal(session.getResults().numberOfResponses, 1, '98 is not yet committed - held pending in case a completing fragment arrives');
+    assert.equal(scheduler.hasPending(), true);
+
+    scheduler.fireLatestPending(); // nothing more arrives - the debounce window elapses
 
     const results = session.getResults();
-    assert.deepEqual(results.parsedNumbers, [101, 98], '98 must still be recorded correctly - delayed, never dropped or corrupted');
+    assert.deepEqual(results.parsedNumbers, [101, 98], '98 is still preserved exactly as recognized - never dropped, never guessed at');
+    assert.equal(results.responses[1].resolved, false);
+    assert.equal(results.responses[1].incomplete, true);
+    assert.equal(results.responses[1].correctness, 'unresolved', 'excluded from correct/incorrect scoring, not silently miscounted');
+});
+
+// This is the scenario that previously caused real data corruption (not
+// just a delay): a second short number arriving within the debounce
+// window used to get absorbed into the first ("98" + "95" -> the
+// nonsensical "9895"). The overshoot guard in _looksLikeContinuation()
+// (combining the two would exceed expectedResponseDigits) prevents this
+// unconditionally, regardless of how the individual short fragments end
+// up scored.
+test('two genuinely separate short numbers arriving close together after crossing below 100 are never merged into each other', () => {
+    const { session, engine } = createSession({ startingNumber: 104 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '101', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '98', timestamp: 1400 });
+    engine().onFinalResult({ transcript: '95', timestamp: 1700 }); // only 300ms after "98" - well within the debounce window
+    session.stop(); // flush whatever's still pending rather than losing it
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [101, 98, 95], 'must never become [101, 9895] - the core safety property');
+    assert.equal(results.numberOfResponses, 3);
+    // Neither short response reached the 3-digit target on its own, so
+    // both are correctly flagged incomplete rather than silently scored -
+    // see the policy comment above.
+    assert.equal(results.responses[1].incomplete, true);
+    assert.equal(results.responses[2].incomplete, true);
 });
 
 // Explicit debounce-timeout test: a fragment with NOTHING arriving after
@@ -602,7 +680,14 @@ test('a pending fragment with no continuation is committed as-is once the deboun
 
     const results = session.getResults();
     assert.deepEqual(results.parsedNumbers, [8], 'committed as-is - the raw recognized "8" is preserved, never dropped or guessed at');
-    assert.equal(results.responses[0].mergedFromFragments, true);
+    // Correctly false: this fragment never actually combined with any
+    // other recognition event - it just timed out alone - so it is not a
+    // "merged" response, even though it went through the pending-fragment
+    // path. See getRawRecognitionEvents()[0].merged for the event-level
+    // equivalent (also false here).
+    assert.equal(results.responses[0].mergedFromFragments, false);
+    assert.equal(session.getRawRecognitionEvents()[0].merged, false);
+    assert.deepEqual(session.getRawRecognitionEvents()[0].contributedToResponses, [0]);
 });
 
 test('a continuation that arrives before the debounce window elapses cancels the pending timeout and merges instead', () => {
@@ -662,6 +747,318 @@ test('a multi-number event ending in an incomplete trailing fragment commits the
     engine().onFinalResult({ transcript: '61', timestamp: 1080 });
     assert.deepEqual(session.getResults().parsedNumbers, [862, 861]);
 });
+
+// --- Bug fix (researcher request, 2026): a fragment must never absorb a
+// SEPARATE, already-complete number that happens to arrive within the
+// debounce window - only a genuine continuation piece may merge. ---
+
+test('a fragment followed by a wholly separate, already-complete number is NOT merged (the number is preserved correctly, not corrupted)', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 }); // a genuine incomplete fragment
+    engine().onFinalResult({ transcript: '957', timestamp: 1100 }); // NOT its continuation - a separate complete number
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [8, 957], 'must never become the corrupted 8957');
+    assert.equal(results.numberOfResponses, 2);
+});
+
+test('a fragment followed by a complete WORD-FORM number is also not merged', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: 'nine hundred fifty seven', timestamp: 1100 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [8, 957]);
+});
+
+// --- Requirement 14: reproduce the exact reported scenario ---
+// Starting number 865, participant counts 865, 862, 859, 856; Chrome
+// fragments the recognition into "8", "55", "861", "858" - verify the
+// segmentation layer does not blindly treat every final event as an
+// independent response, AND does not invent/guess the participant's
+// intended numbers - it records exactly what these fragments and
+// complete events reconstruct to, honestly.
+test('requirement 14: reproduces the reported "8"/"55"/"861"/"858" fragmentation and shows the segmentation layer no longer treats each final event as independent', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '55', timestamp: 1080 }); // "8" + "55" -> reconstructs to 855
+    engine().onFinalResult({ transcript: '861', timestamp: 1600 }); // already complete on its own - recorded exactly as recognized, NOT corrected to 859
+    engine().onFinalResult({ transcript: '858', timestamp: 2100 });
+
+    const results = session.getResults();
+    // "8" + "55" combine (855), never left as two separate garbage
+    // responses "8, 55" - this is the core bug this task reports.
+    assert.deepEqual(results.parsedNumbers, [855, 861, 858]);
+    assert.equal(results.numberOfResponses, 3, 'not 4 - the fragment was reconstructed, not recorded as its own response');
+
+    // CRITICAL: 861 is preserved exactly as Chrome recognized it - the
+    // system must NEVER silently correct it to whatever was
+    // mathematically expected (855 - 3 = 852 here, since the merged first
+    // response came out as 855, not a clean 862 - adaptive scoring
+    // continues from whatever was ACTUALLY recognized at every step).
+    assert.equal(results.responses[1].parsedNumber, 861);
+    assert.equal(results.responses[1].expectedNumber, 852);
+    assert.equal(results.responses[1].correctness, 'incorrect');
+    // And the response after it continues from the actual 861, not from
+    // 852 or any other mathematically "corrected" value: 861 - 3 = 858.
+    assert.equal(results.responses[2].expectedNumber, 858);
+    assert.equal(results.responses[2].correctness, 'correct');
+
+    // The full raw audit trail still shows exactly what the browser sent,
+    // completely unmodified - including the two fragments that combined.
+    const events = session.getRawRecognitionEvents();
+    assert.equal(events.length, 4);
+    assert.deepEqual(events.map((e) => e.rawTranscript), ['8', '55', '861', '858']);
+    assert.equal(events[0].merged, true, '"8" contributed to a merged response');
+    assert.equal(events[1].merged, true, '"55" contributed to the same merged response');
+    assert.equal(events[2].merged, false, '"861" was already complete on its own');
+    assert.deepEqual(events[0].contributedToResponses, [0]);
+    assert.deepEqual(events[1].contributedToResponses, [0], 'both fragments point to the SAME committed response (855)');
+    assert.deepEqual(events[2].contributedToResponses, [1]);
+    assert.deepEqual(events[3].contributedToResponses, [2]);
+});
+
+// --- Event-level audit metadata: `merged` and `contributedToResponses` ---
+
+test('a non-merged event is marked merged: false and points to exactly the one response it produced', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+    engine().onFinalResult({ transcript: '862', timestamp: 1000 });
+
+    const events = session.getRawRecognitionEvents();
+    assert.equal(events[0].merged, false);
+    assert.deepEqual(events[0].contributedToResponses, [0]);
+});
+
+test('a single multi-number event (no merging involved) still correctly points its one event to all the responses it produced', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+    engine().onFinalResult({ transcript: '862 859', timestamp: 1000 });
+
+    const events = session.getRawRecognitionEvents();
+    assert.equal(events.length, 1);
+    assert.equal(events[0].merged, false, 'not a fragment merge - both numbers came from ONE event, not multiple');
+    assert.deepEqual(events[0].contributedToResponses, [0, 1]);
+});
+
+test('getRawRecognitionEvents()\'s contributedToResponses is a defensive copy', () => {
+    const { session, engine } = createSession({ startingNumber: 865 });
+    session.start();
+    engine().onFinalResult({ transcript: '862', timestamp: 1000 });
+
+    const events = session.getRawRecognitionEvents();
+    events[0].contributedToResponses.push(999);
+    assert.deepEqual(session.getRawRecognitionEvents()[0].contributedToResponses, [0]);
+});
+
+// --- expectedResponseDigits is genuinely configurable, per-session ---
+
+test('a researcher who configures expectedResponseDigits for a shorter-response phase gets those responses scored normally, not flagged incomplete', () => {
+    const { session, engine } = createSession({ startingNumber: 104, subtractionValue: 3, expectedResponseDigits: 2 });
+    session.start();
+
+    for (const [n, t] of [[101, 1000], [98, 1400], [95, 1800]]) {
+        engine().onFinalResult({ transcript: String(n), timestamp: t });
+    }
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [101, 98, 95]);
+    // 101 is 3 digits (>= the configured 2-digit target, so still
+    // immediately complete); 98 and 95 each meet the configured target
+    // exactly and are scored normally, not flagged incomplete.
+    assert.equal(results.responses.every((r) => r.incomplete === false), true);
+    assert.deepEqual(results.responses.map((r) => r.correctness), ['correct', 'correct', 'correct']);
+});
+
+// --- Mixed digit/word recognition across a phase (numberParser already
+// supports both forms independently; this confirms segmentation handles
+// switching between them across separate events without issue) ---
+
+test('mixed digit-form and word-form responses across separate events in the same phase are all recorded correctly', () => {
+    const { session, engine } = createSession({ startingNumber: 960 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '957', timestamp: 1000 });
+    engine().onFinalResult({ transcript: 'nine hundred fifty four', timestamp: 1500 });
+    engine().onFinalResult({ transcript: '951', timestamp: 2000 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [957, 954, 951]);
+});
+
+// --- Three-digit response requirement (researcher request, 2026):
+// expectedResponseDigits as the primary segmentation signal, exercising
+// the exact numbered scenarios from the brief this was built against. ---
+
+test('1. "8" + "47" -> 847', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '47', timestamp: 1080 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847]);
+    assert.equal(session.getResults().responses[0].mergedFromFragments, true);
+    assert.deepEqual(session.getResults().responses[0].contributingRawTranscripts, ['8', '47']);
+});
+
+test('2. "84" + "7" -> 847', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '84', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '7', timestamp: 1080 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847]);
+});
+
+test('3. "8" + "4" + "7" -> 847', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '4', timestamp: 1080 });
+    engine().onFinalResult({ transcript: '7', timestamp: 1150 });
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [847]);
+    assert.deepEqual(results.responses[0].contributingRawTranscripts, ['8', '4', '7']);
+});
+
+test('4. "847" -> 847 (already complete, commits immediately, no merge)', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '847', timestamp: 1000 });
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [847]);
+    assert.equal(results.responses[0].mergedFromFragments, false);
+});
+
+test('5. "847" + "844" -> 847, 844 (never merged into one number)', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '847', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '844', timestamp: 1150 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847, 844]);
+});
+
+test('6. "847" + "844" + "841" -> 847, 844, 841', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '847', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '844', timestamp: 1150 });
+    engine().onFinalResult({ transcript: '841', timestamp: 1300 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847, 844, 841]);
+});
+
+test('7. "8" + "47" + "844" -> 847, 844 (not 8, 47, 844 and not 847844)', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '47', timestamp: 1080 });
+    engine().onFinalResult({ transcript: '844', timestamp: 1600 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847, 844]);
+});
+
+test('8. incomplete "8" at phase end is preserved and marked unresolved/incomplete, never guessed at', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    session.stop(); // phase ends with the fragment still pending
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [8], 'the raw recognized "8" is preserved exactly - no digits invented');
+    assert.equal(results.responses[0].resolved, false);
+    assert.equal(results.responses[0].incomplete, true);
+    assert.equal(results.responses[0].correctness, 'unresolved');
+    // The raw event itself is also flagged, for research audit.
+    assert.equal(session.getRawRecognitionEvents()[0].incomplete, true);
+});
+
+test('9. "8" + "46" -> 846, NOT corrected to the mathematically expected 847', () => {
+    const { session, engine } = createSession({ startingNumber: 850 }); // subtractionValue 3 - expected first response is 847
+    session.start();
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '46', timestamp: 1080 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [846], 'the raw recognition is 846 - never silently changed to 847');
+    assert.equal(results.responses[0].expectedNumber, 847);
+    assert.equal(results.responses[0].correctness, 'incorrect', 'scoring reports the mismatch - it does not hide it by correcting the value');
+});
+
+test('10. number-word "eight hundred forty seven" -> 847, compatible with the three-digit segmentation logic', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight hundred forty seven', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847]);
+});
+
+test('10b. a word-form number fragmented across two events ("eight" + "hundred forty seven") still reconstructs to 847', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight', timestamp: 1000 });
+    engine().onFinalResult({ transcript: 'hundred forty seven', timestamp: 1200 });
+    assert.deepEqual(session.getResults().parsedNumbers, [847]);
+});
+
+test('11. short pauses between fragments of the SAME number still merge correctly', () => {
+    const { session, engine } = createSession({ startingNumber: 850, fragmentCommitDebounceMs: 400 });
+    session.start();
+    engine().onFinalResult({ transcript: '8', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '47', timestamp: 1350 }); // 350ms pause - still within the debounce window
+    assert.deepEqual(session.getResults().parsedNumbers, [847]);
+});
+
+test('12. short pauses between two COMPLETE numbers still keep them separate', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    engine().onFinalResult({ transcript: '847', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '844', timestamp: 1100 }); // only 100ms later - complete numbers never wait to merge
+    assert.deepEqual(session.getResults().parsedNumbers, [847, 844]);
+});
+
+test('13. recognition alternatives (e.g. from an accent producing a different top guess) are preserved and exposed, never substituted into the raw response', () => {
+    const { session, engine } = createSession({ startingNumber: 850 });
+    session.start();
+    // Simulates the browser offering a different-sounding alternative
+    // (as accent-related misrecognition might produce) alongside the
+    // primary result - see also cognitive/speechRecognition.js's
+    // maxAlternatives configuration, unrelated to this segmentation logic.
+    engine().onFinalResult({
+        transcript: '846',
+        alternatives: ['846', '847', '840'],
+        timestamp: 1000
+    });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [846], 'the primary recognition is always what gets recorded and scored');
+    assert.deepEqual(results.responses[0].alternativeNumbers, [847, 840], 'alternatives are preserved for research review, never used to replace the primary value');
+    assert.equal(results.responses[0].alternativeMatchesExpected, true, 'flagged for review - one alternative (847) would have matched the expected sequence - but 846 remains the scored value');
+});
+
+test('14. adaptive scoring after a wrong recognized number: 850, 847, 846(wrong), 843', () => {
+    const { session, engine } = createSession({ startingNumber: 850 }); // subtractionValue 3 (default)
+    session.start();
+    for (const [n, t] of [[847, 1000], [846, 2000], [843, 3000]]) {
+        engine().onFinalResult({ transcript: String(n), timestamp: t });
+    }
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [847, 846, 843]);
+    assert.deepEqual(results.expectedNumbers, [847, 844, 843]);
+    assert.deepEqual(results.responses.map((r) => r.correctness), ['correct', 'incorrect', 'correct']);
+    // 846 was wrong (844 expected), but the next expected number (843) is
+    // derived from the actual recognized 846 (846 - 3 = 843), never from
+    // the mathematically expected 844.
+    assert.equal(results.responses[2].expectedNumber, 843, '846 - 3, not 844 - 3');
+});
+
+// 15. duplicate recognition events: already covered above ("two final
+// events with the exact same transcript arriving close together...").
+// 16. the 101 -> 98 -> 95 below-100 regression: already covered above
+// ("two genuinely separate short numbers arriving close together after
+// crossing below 100...") and kept relevant per the new incomplete-
+// flagging policy documented there.
 
 test('onUpdate() notifies subscribers on mic state, interim, final, and error changes; unsubscribe stops further notifications', () => {
     const { session, engine } = createSession();

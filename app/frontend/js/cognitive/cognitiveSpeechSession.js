@@ -34,48 +34,83 @@ const DUPLICATE_FINAL_EVENT_WINDOW_MS = 1500;
 
 // FRAGMENT SEGMENTATION - Chrome's own utterance endpointer (voice-
 // activity detection deciding where one recognition result ends) can
-// misfire mid-number, finalizing e.g. "8" and "65" as two separate final
-// events for one spoken "865". Neither event is "wrong" on its own - the
+// misfire mid-number, finalizing e.g. "8" and "47" as two separate final
+// events for one spoken "847". Neither event is "wrong" on its own - the
 // browser genuinely finalized that text - so this cannot be fixed by
 // parsing more cleverly; it has to be detected at the sequencing level.
 //
-// The strategy (see _looksComplete()/_ingestFinalText() below) combines
-// TWO signals, deliberately NOT timing alone, because a short pause is
-// exactly as likely between a genuine fragment and its continuation as it
-// is between two separate spoken numbers at a natural counting pace (see
-// requirement C/G in the brief this was built against):
+// THREE-DIGIT SIGNAL (researcher request, 2026): every valid participant
+// response in this study's protocol is exactly `expectedResponseDigits`
+// digits (default 3 - see config/experimentConfig.js#expectedResponseDigits
+// and DEFAULT_EXPECTED_RESPONSE_DIGITS below) - the experiment always
+// generates a 3-digit starting number and the participant counts backward
+// by a fixed rule. This is used PURELY as a segmentation signal (is a
+// recognized fragment likely incomplete?) - it is NEVER used to alter,
+// guess, or "correct" a recognized value. If Chrome recognizes "8"+"46",
+// the committed response is 846, not 847, even though 847 may have been
+// mathematically expected; speechScoring.js (unmodified) is the only
+// place that comparison happens, and only for scoring, never for
+// rewriting what was recognized.
 //
-//   1. CONTENT completeness - does the trailing segment already look like
-//      a plausible finished response (a digit run at least as long as the
-//      digit-length of the numbers seen so far in this phase, or a
-//      resolved word-form number already anchored by "hundred")? If so it
-//      is committed immediately, REGARDLESS of how soon the next event
-//      arrives - this is what guarantees two genuinely separate complete
-//      numbers spoken close together (e.g. "865" then, 300ms later,
-//      "862") are never merged into "865862".
+// The strategy (see _looksComplete()/_looksLikeContinuation()/
+// _ingestFinalText() below) combines multiple signals:
+//
+//   1. DIGIT LENGTH - a resolved digit-only segment is "complete" once it
+//      reaches expectedResponseDigits; a resolved word-form number
+//      (numberParser.js's "<ones> hundred ..." pattern) is always exactly
+//      expectedResponseDigits by construction, so it is always complete
+//      the moment it resolves.
 //   2. TIMING - only a segment that does NOT look complete is held
 //      pending, and only for FRAGMENT_COMMIT_DEBOUNCE_MS: if nothing
-//      arrives in that short window, it is committed as-is (never
-//      silently dropped); if another final event arrives within the
-//      window, its text is concatenated onto the pending fragment
-//      (digit fragments joined with no separator so "8"+"65"="865";
-//      word-form fragments joined with a space so "nine"+"hundred
-//      sixty"="nine hundred sixty") and re-evaluated the same way -
-//      correctly handling a number split into more than 2 pieces.
+//      arrives in that short window, it is committed as-is (see "phase
+//      end" handling below - never silently dropped); if another final
+//      event arrives within the window, merging is considered.
+//   3/4/5. PENDING/INCOMING COMPLETENESS - merging is only considered
+//      while something is genuinely pending, and only if the incoming
+//      text does NOT already look like a complete response on its own -
+//      this is what stops an unrelated, already-complete number (e.g.
+//      "957" arriving shortly after a stray "8") from being absorbed.
+//      Critically, a merge is also refused if the COMBINED digit count
+//      would EXCEED expectedResponseDigits - this is the "do not blindly
+//      concatenate everything" guard: two genuinely separate short
+//      fragments are never forced together past the expected length.
+//   6/7. RECOGNITION EVENT BOUNDARIES / INTERIM-FINAL - untouched from
+//      the engine's own distinction (see speechRecognition.js); only
+//      final events are ever segmented/committed, interim text is purely
+//      transient display state (see getInterimTranscript()).
+//   8. DUPLICATE-EVENT HANDLING - unchanged, applied before any of the
+//      above (see DUPLICATE_FINAL_EVENT_WINDOW_MS above).
 //
 // A pending fragment's own raw text is never invented or guessed at
 // mathematically - it is exactly the concatenation of what the browser
-// actually returned. Every individual raw recognition event, whether or
-// not it ends up merged, is still preserved unmodified in
-// getRawRecognitionEvents() (see _recordFinalTranscript below) - nothing
-// in this mechanism destroys the original browser transcripts.
+// actually returned. If a fragment never reaches expectedResponseDigits
+// (nothing more arrives, or the phase ends - see stop()), it is still
+// committed, but flagged `incomplete: true` and scored as `resolved:
+// false` (routes into speechScoring.js's existing "unresolved" bucket,
+// unmodified) rather than guessed at - see _flushPendingFragment(). Every
+// individual raw recognition event, whether or not it ends up merged, is
+// still preserved unmodified in getRawRecognitionEvents() (see
+// _recordFinalTranscript below) - nothing in this mechanism destroys the
+// original browser transcripts.
 const FRAGMENT_COMMIT_DEBOUNCE_MS = 400;
+
+// Default number of digits a complete response is expected to have -
+// overridable per session (see config/experimentConfig.js
+// #expectedResponseDigits, threaded through by experimentController.js).
+// Named/configurable per the "do not scatter the number 3 throughout the
+// code" requirement - every place that cares about response length reads
+// this.expectedResponseDigits (see below), never a literal 3.
+const DEFAULT_EXPECTED_RESPONSE_DIGITS = 3;
+
+const DEFAULT_SPEECH_RECOGNITION_LANGUAGE = 'en-US';
 
 export class CognitiveSpeechSession {
     constructor({
         subtractionValue,
         startingNumber,
         scoringMode = DEFAULT_SCORING_MODE,
+        expectedResponseDigits = DEFAULT_EXPECTED_RESPONSE_DIGITS,
+        speechRecognitionLanguage = DEFAULT_SPEECH_RECOGNITION_LANGUAGE,
         engineFactory = (options) => new SpeechRecognitionEngine(options),
         fragmentCommitDebounceMs = FRAGMENT_COMMIT_DEBOUNCE_MS,
         scheduleFragmentCommit = (callback, ms) => setTimeout(callback, ms),
@@ -89,20 +124,20 @@ export class CognitiveSpeechSession {
         this.phaseEndTime = null;
 
         this._logger = logger;
-        this._engine = engineFactory({ logger });
+        this._expectedResponseDigits = expectedResponseDigits;
+        // Participants may have different English accents - the browser's
+        // own recognition language/model is the only lever this app has
+        // for that (no AI accent-identification is added). This does not
+        // and cannot guarantee accurate recognition across accents; the
+        // raw browser result is always preserved regardless (see
+        // getRawRecognitionEvents()/getRawTranscript()).
+        this._engine = engineFactory({ logger, lang: speechRecognitionLanguage });
 
         this._fragmentCommitDebounceMs = fragmentCommitDebounceMs;
         this._scheduleFragmentCommit = scheduleFragmentCommit;
         this._clearFragmentCommit = clearFragmentCommit;
-        this._pendingFragment = null; // { rawTranscript, timestamp } | null - see FRAGMENT_COMMIT_DEBOUNCE_MS above
+        this._pendingFragment = null; // { rawTranscript, timestamp, sourceEventIndexes, sourceRawTranscripts } | null
         this._scheduledFragmentCommit = null;
-        // The "how many digits does a complete response look like right
-        // now" reference for _looksComplete()'s digit-run check - starts
-        // from the given starting number and updates to whatever was last
-        // actually committed, so it tracks the sequence's real magnitude
-        // as it decreases over a long phase rather than staying frozen at
-        // the start value. A documented heuristic, not a guarantee.
-        this._expectedDigitLength = Number.isFinite(startingNumber) ? String(Math.abs(startingNumber)).length : 3;
 
         // Raw, unscored responses in the order they were recognized -
         // never mutated once appended, so the raw transcript is always
@@ -113,11 +148,10 @@ export class CognitiveSpeechSession {
         // EVENT as received from the engine (one entry per onFinalResult
         // call, before any parsing/splitting into individual numbers) -
         // includes every alternative transcript the browser offered.
-        // Never mutated, and an entry is added for every final event
-        // without exception, even ones treated as duplicates (see
-        // DUPLICATE_FINAL_EVENT_WINDOW_MS above) - this array is the
-        // canonical "what did the browser actually report" record for
-        // research/audit purposes.
+        // rawTranscript/alternatives/timestamp are never mutated once
+        // pushed; `merged`, `contributedToResponses` and `incomplete` ARE
+        // filled in afterward (see _commitSegment below) purely as
+        // cross-reference metadata for research/audit purposes.
         this._rawRecognitionEvents = [];
         this._lastRecordedFinalEvent = null; // { transcript, timestamp } of the last NON-duplicate final event
 
@@ -165,7 +199,9 @@ export class CognitiveSpeechSession {
     stop() {
         // Commit whatever's still pending rather than silently losing it -
         // the phase ending is not a reason to discard the last thing the
-        // participant said, even if it was still mid-debounce-window.
+        // participant said, even if it was still mid-debounce-window (see
+        // _flushPendingFragment() - it is marked incomplete rather than
+        // guessed at if it never reached expectedResponseDigits).
         this._flushPendingFragment();
         this._engine.stop();
         this.phaseEndTime = new Date().toISOString();
@@ -214,16 +250,20 @@ export class CognitiveSpeechSession {
         );
 
         // ALWAYS recorded, unconditionally and unmodified, exactly as the
-        // browser delivered it - see the module-level comment on
-        // DUPLICATE_FINAL_EVENT_WINDOW_MS. This is the complete audit
-        // trail regardless of what happens next, including fragments that
-        // get merged below - nothing in the fragment-segmentation logic
-        // touches this array.
+        // browser delivered it - nothing in the fragment-segmentation
+        // logic touches rawTranscript/alternatives/timestamp on this
+        // entry. `merged`/`contributedToResponses`/`incomplete` are
+        // cross-reference metadata filled in afterward (see
+        // _commitSegment below).
+        const eventIndex = this._rawRecognitionEvents.length;
         this._rawRecognitionEvents.push({
             rawTranscript: transcript,
             alternatives: [...alternatives],
             timestamp: resolvedTimestamp,
-            treatedAsDuplicate: isDuplicate
+            treatedAsDuplicate: isDuplicate,
+            merged: false,
+            contributedToResponses: [],
+            incomplete: false
         });
 
         if (isDuplicate) {
@@ -232,7 +272,7 @@ export class CognitiveSpeechSession {
         }
         this._lastRecordedFinalEvent = { transcript, timestamp: resolvedTimestamp };
 
-        this._ingestFinalText(transcript, alternatives, resolvedTimestamp);
+        this._ingestFinalText(transcript, alternatives, resolvedTimestamp, eventIndex);
         this._notify();
     }
 
@@ -242,27 +282,34 @@ export class CognitiveSpeechSession {
     // looks like a complete response - holding back at most the LAST one
     // if it still looks incomplete, to give one more event a chance to
     // complete it.
-    _ingestFinalText(transcript, alternatives, timestamp) {
+    _ingestFinalText(transcript, alternatives, timestamp, eventIndex) {
         let textToParse = transcript;
         let isMerge = false;
+        let sourceEventIndexes = [eventIndex];
+        let sourceRawTranscripts = [transcript];
 
         if (this._pendingFragment) {
             const gap = timestamp - this._pendingFragment.timestamp;
-            if (gap >= 0 && gap < this._fragmentCommitDebounceMs) {
+            if (gap >= 0 && gap < this._fragmentCommitDebounceMs && this._looksLikeContinuation(this._pendingFragment, transcript)) {
                 // Digit fragments must be joined with no separator so
-                // "8" + "65" reforms "865"; word-form fragments need a
+                // "8" + "47" reforms "847"; word-form fragments need a
                 // space so "nine" + "hundred sixty" reforms "nine hundred
                 // sixty" rather than the unparseable "ninehundred sixty".
                 const pendingIsDigits = /^\d+$/.test(this._pendingFragment.rawTranscript.replace(/[.,]+$/, ''));
                 textToParse = this._pendingFragment.rawTranscript + (pendingIsDigits ? '' : ' ') + transcript;
                 isMerge = true;
+                sourceEventIndexes = [...this._pendingFragment.sourceEventIndexes, eventIndex];
+                sourceRawTranscripts = [...this._pendingFragment.sourceRawTranscripts, transcript];
+                this._pendingFragment = null;
+                this._clearScheduledFragmentCommit();
             } else {
-                // Too long since the pending fragment arrived - it stands
-                // on its own; commit it before considering this new event.
+                // Too long since the pending fragment arrived, or the new
+                // event already stands on its own, or merging would
+                // overshoot expectedResponseDigits - either way the
+                // pending fragment must be committed as-is before this
+                // new event is considered, never silently merged away.
                 this._flushPendingFragment();
             }
-            this._pendingFragment = null;
-            this._clearScheduledFragmentCommit();
         }
 
         const segments = parseNumbersFromTranscript(textToParse);
@@ -280,7 +327,7 @@ export class CognitiveSpeechSession {
 
         segments.forEach((segment, index) => {
             if (index === lastIndex && !this._looksComplete(segment)) {
-                this._pendingFragment = { rawTranscript: segment.raw, timestamp };
+                this._pendingFragment = { rawTranscript: segment.raw, timestamp, sourceEventIndexes, sourceRawTranscripts };
                 this._scheduledFragmentCommit = this._scheduleFragmentCommit(
                     () => this._flushPendingFragment(),
                     this._fragmentCommitDebounceMs
@@ -289,28 +336,68 @@ export class CognitiveSpeechSession {
             }
 
             const candidateNumbers = isMerge ? [] : this._computeCandidateNumbers(segment, index, alternativeSegmentsByAlt);
-            this._commitSegment(segment, candidateNumbers, timestamp, isMerge);
+            this._commitSegment(segment, candidateNumbers, timestamp, sourceEventIndexes, sourceRawTranscripts);
         });
     }
 
     // Content-completeness check - see the module-level comment on
-    // FRAGMENT_COMMIT_DEBOUNCE_MS for the full rationale. Returns true
+    // FRAGMENT_COMMIT_DEBOUNCE_MS for the full rationale. A response in
+    // this study's protocol is normally exactly `expectedResponseDigits`
+    // digits; this checks a SEGMENT against that target purely to decide
+    // whether it might still be an in-progress fragment - it never
+    // changes what the segment's own recognized value is. Returns true
     // ("commit now, do not wait") for anything that already looks like a
     // finished response, including unrelated/unintelligible speech (which
     // must never be held pending a merge attempt just because it failed
     // to parse).
     _looksComplete(segment) {
-        if (segment.resolved) {
-            const digitsOnly = /^\d+$/.test(segment.raw.replace(/[.,]+$/, ''));
-            if (!digitsOnly) {
-                return true; // word-form number, already anchored by "hundred"
-            }
-            const digitCount = segment.raw.replace(/[.,]+$/, '').length;
-            return digitCount >= this._expectedDigitLength;
+        if (!segment.resolved) {
+            // Only an actual number-vocabulary fragment (e.g. "nine" cut
+            // off before "hundred sixty") is worth buffering.
+            return !looksLikeNumberFragment(segment.raw);
         }
-        // Unresolved: only an actual number-vocabulary fragment (e.g.
-        // "nine" cut off before "hundred sixty") is worth buffering.
-        return !looksLikeNumberFragment(segment.raw);
+        const digitsOnly = /^\d+$/.test(segment.raw.replace(/[.,]+$/, ''));
+        if (!digitsOnly) {
+            // A resolved word-form number (numberParser.js's mandatory
+            // "<ones> hundred ..." pattern) is always exactly
+            // expectedResponseDigits by construction - it never needs a
+            // digit-count check.
+            return true;
+        }
+        const digitCount = segment.raw.replace(/[.,]+$/, '').length;
+        return digitCount >= this._expectedResponseDigits;
+    }
+
+    // Whether `transcript`, arriving while `pendingFragment` is still
+    // buffered, looks like ITS continuation rather than an unrelated,
+    // already-complete response. Deliberately NOT "blindly concatenate
+    // until 3 digits" - a merge is only ever considered when the incoming
+    // text does not already look complete on its own, AND is refused
+    // outright if combining it with the pending fragment would EXCEED
+    // expectedResponseDigits (the guard that keeps two genuinely separate
+    // short fragments, e.g. after the sequence crosses below 100, from
+    // being forced together into something like "9895").
+    _looksLikeContinuation(pendingFragment, transcript) {
+        const segments = parseNumbersFromTranscript(transcript);
+        if (segments.length === 0) {
+            return true;
+        }
+        const incoming = segments[0];
+        if (this._looksComplete(incoming)) {
+            return false; // already complete (or unrelated gibberish) on its own - never absorb it
+        }
+        if (!incoming.resolved) {
+            return true; // both sides look like genuine number-word fragments (e.g. "nine" + "hundred sixty") - let the merge proceed, re-checked for completeness afterward
+        }
+
+        const pendingDigitsOnly = /^\d+$/.test(pendingFragment.rawTranscript.replace(/[.,]+$/, ''));
+        if (!pendingDigitsOnly) {
+            return true; // pending side is word-form - digit-count math doesn't apply; let the merge happen, re-checked afterward
+        }
+
+        const pendingDigitCount = pendingFragment.rawTranscript.replace(/[.,]+$/, '').length;
+        const incomingDigitCount = incoming.raw.replace(/[.,]+$/, '').length;
+        return pendingDigitCount + incomingDigitCount <= this._expectedResponseDigits;
     }
 
     _computeCandidateNumbers(segment, index, alternativeSegmentsByAlt) {
@@ -324,26 +411,51 @@ export class CognitiveSpeechSession {
         return [...candidateNumbers];
     }
 
-    _commitSegment(segment, alternativeNumbers, timestamp, mergedFromFragments) {
+    // incomplete: true marks a response that was flushed (debounce
+    // timeout, phase end, or superseded by a non-continuation) WITHOUT
+    // ever reaching expectedResponseDigits. Its raw recognized value is
+    // still fully preserved (rawTranscript/parsedNumber) - never guessed
+    // at or discarded - but `resolved` is forced to false so
+    // speechScoring.js's existing, unmodified "unresolved" handling
+    // excludes it from correct/incorrect scoring, since it is not a
+    // complete response.
+    _commitSegment(segment, alternativeNumbers, timestamp, sourceEventIndexes, sourceRawTranscripts, { incomplete = false } = {}) {
         this._rawResponses.push({
             timestamp,
             rawTranscript: segment.raw, // RAW RECOGNITION - exactly as recognized (post-merge text for a reconstructed number), never overwritten
-            parsedNumber: segment.value, // SELECTED/VALIDATED NUMBER - always the raw value above; alternatives are never substituted in
-            resolved: segment.resolved,
+            parsedNumber: segment.value, // SELECTED/VALIDATED NUMBER - always the raw value above; alternatives (and the mathematically expected value) are never substituted in
+            resolved: incomplete ? false : segment.resolved,
             alternativeNumbers, // ALTERNATIVE RECOGNITION candidates, for review only
-            mergedFromFragments // true if this response was reconstructed from more than one recognition event
+            mergedFromFragments: sourceEventIndexes.length > 1, // true if this response was reconstructed from more than one recognition event
+            contributingRawTranscripts: [...sourceRawTranscripts], // the individual raw event transcript(s) that combined to produce this response
+            incomplete // true if this response never reached expectedResponseDigits - preserved, never guessed at (see stop()/H)
         });
-        if (segment.resolved && segment.value != null) {
-            this._expectedDigitLength = String(Math.abs(segment.value)).length;
+
+        const responseIndex = this._rawResponses.length - 1;
+        for (const idx of sourceEventIndexes) {
+            const event = this._rawRecognitionEvents[idx];
+            if (!event) {
+                continue;
+            }
+            event.contributedToResponses.push(responseIndex);
+            if (sourceEventIndexes.length > 1) {
+                event.merged = true;
+            }
+            if (incomplete) {
+                event.incomplete = true;
+            }
         }
     }
 
     // Commits whatever is currently pending, exactly as-is - called when
     // the debounce window elapses with no continuation arriving, when a
-    // new event arrives too late to still count as a continuation, or
-    // when the phase ends (see stop() above). Never silently drops a
-    // fragment; the participant's actual recognized text is preserved
-    // even if it never got a chance to be completed by a later event.
+    // new event arrives too late (or already stands on its own, or would
+    // overshoot expectedResponseDigits) to still count as a continuation,
+    // or when the phase ends (see stop() above). Never silently drops a
+    // fragment, and never invents the missing digits to reach
+    // expectedResponseDigits - the participant's actual recognized text
+    // is preserved and flagged incomplete (see _commitSegment) if it
+    // never got a chance to be completed by a later event.
     _flushPendingFragment() {
         if (!this._pendingFragment) {
             return;
@@ -353,7 +465,9 @@ export class CognitiveSpeechSession {
         this._clearScheduledFragmentCommit();
 
         for (const segment of parseNumbersFromTranscript(fragment.rawTranscript)) {
-            this._commitSegment(segment, [], fragment.timestamp, true);
+            this._commitSegment(segment, [], fragment.timestamp, fragment.sourceEventIndexes, fragment.sourceRawTranscripts, {
+                incomplete: !this._looksComplete(segment)
+            });
         }
         this._notify();
     }
@@ -370,7 +484,9 @@ export class CognitiveSpeechSession {
     // transcript" requirement. Space-joined; this is the stored/exported
     // research value (see data/dataFormatter.js, exportService.js) and is
     // deliberately NOT reformatted for display - see
-    // getRawResponseSegments() below for the UI-presentation form.
+    // getRawResponseSegments() below for the UI-presentation form. Commas
+    // are a display-only concern (ui/speechTranscriptPanel.js) and never
+    // appear in this stored value.
     getRawTranscript() {
         return this._rawResponses.map((response) => response.rawTranscript).join(' ');
     }
@@ -390,35 +506,43 @@ export class CognitiveSpeechSession {
     // each with every alternative the browser offered, exactly as
     // received. Returned as a defensive copy.
     getRawRecognitionEvents() {
-        return this._rawRecognitionEvents.map((event) => ({ ...event, alternatives: [...event.alternatives] }));
+        return this._rawRecognitionEvents.map((event) => ({
+            ...event,
+            alternatives: [...event.alternatives],
+            contributedToResponses: [...event.contributedToResponses]
+        }));
     }
 
     // Scores every recorded response against the expected serial-subtraction
     // sequence (see speechScoring.js, UNMODIFIED - it never sees or knows
-    // about alternativeNumbers, it just spreads {...response} through) and
-    // returns the full per-condition result record described in DATA TO
-    // RECORD.
+    // about alternativeNumbers/incomplete, it just spreads {...response}
+    // through) and returns the full per-condition result record described
+    // in DATA TO RECORD.
     //
     // Each response in the returned .responses array distinguishes:
-    //   RAW RECOGNITION        -> rawTranscript, parsedNumber (never
-    //                              auto-corrected - always what the
-    //                              primary/best recognition produced)
+    //   RAW RECOGNITION         -> rawTranscript, parsedNumber,
+    //                              contributingRawTranscripts (never
+    //                              auto-corrected - always what was
+    //                              actually recognized, even when merged
+    //                              from fragments)
     //   ALTERNATIVE RECOGNITION -> alternativeNumbers (other candidates
     //                              from the same recognition event, only
     //                              ever informational)
-    //   EXPECTED NUMBER         -> expectedNumber (from speechScoring.js,
+    //   EXPECTED NUMBER          -> expectedNumber (from speechScoring.js,
     //                              unchanged scoring architecture)
-    //   SELECTED/VALIDATED      -> parsedNumber IS the selected/validated
+    //   SELECTED/VALIDATED       -> parsedNumber IS the selected/validated
     //                              number - it is always the raw result;
     //                              this pipeline never substitutes an
-    //                              alternative in its place
-    //   CONFIDENCE/REASON       -> correctness (from speechScoring.js) plus
-    //                              alternativeMatchesExpected, a read-only
-    //                              annotation added here (not in
-    //                              speechScoring.js) noting whether one of
-    //                              the alternatives would have matched the
-    //                              expected sequence - visibility only,
-    //                              never fed back into scoring
+    //                              alternative OR the mathematically
+    //                              expected value in its place
+    //   CONFIDENCE/REASON        -> correctness (from speechScoring.js;
+    //                              'unresolved' for anything flagged
+    //                              incomplete) plus alternativeMatchesExpected,
+    //                              a read-only annotation added here (not
+    //                              in speechScoring.js) noting whether one
+    //                              of the alternatives would have matched
+    //                              the expected sequence - visibility
+    //                              only, never fed back into scoring
     getResults() {
         const scoredResponses = scoreResponses(this._rawResponses, {
             startingNumber: this.startingNumber,
