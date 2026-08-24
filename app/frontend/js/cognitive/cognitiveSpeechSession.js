@@ -32,6 +32,23 @@ import { scoreResponses, calculateCognitiveAccuracy, DEFAULT_SCORING_MODE } from
 // with different text, are never touched.
 const DUPLICATE_FINAL_EVENT_WINDOW_MS = 1500;
 
+// CUMULATIVE FINAL TRANSCRIPTS (bug fix, 2026): distinct from the exact-
+// duplicate case above. Some browsers, in continuous mode, deliver each
+// `isFinal` result as the running total of everything recognized in the
+// session so far ("861", then "861 858", then "861 858 855") rather than
+// just the newly-finalized phrase - unlike an exact duplicate, the text
+// is genuinely different each time, so the check above never catches it.
+// Left unhandled, every event re-parses already-committed numbers as if
+// they were new, producing exactly the fragmented/duplicated live
+// responses this fix addresses (see _recordFinalTranscript below, which
+// detects a new transcript that is a prefix-extension of the previous one
+// and ingests only the newly appended remainder). No separate constant is
+// needed here - unlike the duplicate window above, this is not a timing
+// heuristic; it is a straightforward string-prefix comparison against
+// whatever the immediately previous final transcript was, with no time
+// limit, since a browser exhibiting this behavior can do so for an
+// entire continuous phase.
+
 // FRAGMENT SEGMENTATION - Chrome's own utterance endpointer (voice-
 // activity detection deciding where one recognition result ends) can
 // misfire mid-number, finalizing e.g. "8" and "47" as two separate final
@@ -250,9 +267,10 @@ export class CognitiveSpeechSession {
         );
 
         // ALWAYS recorded, unconditionally and unmodified, exactly as the
-        // browser delivered it - nothing in the fragment-segmentation
-        // logic touches rawTranscript/alternatives/timestamp on this
-        // entry. `merged`/`contributedToResponses`/`incomplete` are
+        // browser delivered it - nothing in the fragment-segmentation or
+        // cumulative-transcript logic below touches
+        // rawTranscript/alternatives/timestamp on this entry.
+        // `merged`/`contributedToResponses`/`incomplete` are
         // cross-reference metadata filled in afterward (see
         // _commitSegment below).
         const eventIndex = this._rawRecognitionEvents.length;
@@ -270,9 +288,62 @@ export class CognitiveSpeechSession {
             this._notify();
             return;
         }
+
+        // CUMULATIVE FINAL TRANSCRIPTS - some browsers/engines, in
+        // continuous mode, deliver each `isFinal` result for an ongoing
+        // session as the ENTIRE recognized text so far, not just the
+        // newly-recognized phrase: "861", then "861 858", then "861 858
+        // 855". This is a real, documented behavior in the underlying
+        // recognizer (see speechRecognition.js - it already forwards
+        // event.resultIndex/result.isFinal correctly; the ambiguity is
+        // in what the browser puts INSIDE a given final result's
+        // transcript, which this class cannot control). Naively
+        // re-ingesting the full transcript every time would re-commit
+        // "861" a second and third time, exactly the fragmentation this
+        // guards against.
+        //
+        // Detected narrowly: only when the new transcript is a literal
+        // prefix-extension of the immediately previous final transcript.
+        // Only the newly appended remainder is handed to the ingestion
+        // pipeline below - the raw event pushed above still preserves the
+        // browser's full, untrimmed transcript exactly as received, and a
+        // transcript that is NOT a prefix-extension (a genuinely new,
+        // unrelated utterance, or several numbers spoken in one event) is
+        // ingested in full exactly as before - this only ever trims
+        // content already accounted for by a prior committed/pending
+        // response, never content that hasn't been processed yet.
+        const previousTranscript = this._lastRecordedFinalEvent ? this._lastRecordedFinalEvent.transcript : null;
+        let textToIngest = transcript;
+        let alternativesToIngest = alternatives;
+        // The strict length check matters: an EXACT repeat of the previous
+        // transcript (e.g. "960" said again, well outside
+        // DUPLICATE_FINAL_EVENT_WINDOW_MS above, so it reaches here rather
+        // than being suppressed as a duplicate) is trivially "a prefix of
+        // itself" with an empty remainder - without this check it would be
+        // silently swallowed instead of preserved as the legitimate repeat
+        // it is. Only a transcript STRICTLY LONGER than, and starting
+        // with, the previous one counts as cumulative growth.
+        if (previousTranscript && transcript.length > previousTranscript.length && transcript.startsWith(previousTranscript)) {
+            textToIngest = transcript.slice(previousTranscript.length).trim();
+            // The trimmed remainder no longer corresponds 1:1 with this
+            // event's own `alternatives` (each alternative describes the
+            // WHOLE cumulative utterance, not just the new suffix) - the
+            // same simplification _ingestFinalText already applies to
+            // fragment merges below (alternatives are for confidence/
+            // audit only, never required for correctness).
+            alternativesToIngest = textToIngest ? [textToIngest] : [];
+        }
+
         this._lastRecordedFinalEvent = { transcript, timestamp: resolvedTimestamp };
 
-        this._ingestFinalText(transcript, alternatives, resolvedTimestamp, eventIndex);
+        if (!textToIngest) {
+            // The "new" final event added nothing but whitespace beyond
+            // what was already processed - nothing new was actually said.
+            this._notify();
+            return;
+        }
+
+        this._ingestFinalText(textToIngest, alternativesToIngest, resolvedTimestamp, eventIndex);
         this._notify();
     }
 

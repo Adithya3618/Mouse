@@ -1151,3 +1151,143 @@ test('digit-by-digit: raw transcript is preserved verbatim alongside the parsed 
     assert.equal(results.rawTranscript, 'eight um um eight eight four four four eight', 'the original browser transcript is never destroyed by digit-sequence parsing');
     assert.deepEqual(results.parsedNumbers, [848]);
 });
+
+// --- Cumulative/fragmented final transcripts (bug fix, 2026) ---
+//
+// Root cause: speechRecognition.js already forwards event.resultIndex and
+// result.isFinal correctly (verified by inspection - it iterates only
+// from event.resultIndex, and only ever calls onFinalResult for a result
+// with isFinal true), and CognitiveSpeechSession already keeps interim
+// text (_interimTranscript, display-only, never parsed - see onResult
+// above) fully separate from final text (only onFinalResult reaches
+// _recordFinalTranscript/_ingestFinalText). Interim progression was
+// therefore never the problem (see Test 1 below, which already passed
+// before this fix and is kept as a regression guard).
+//
+// The actual gap was in what _recordFinalTranscript did with a FINAL
+// event's transcript: some browsers/engines, in continuous mode, deliver
+// each `isFinal` result as the full recognized text of the session SO
+// FAR, not just the newly-finalized phrase ("861", then "861 858", then
+// "861 858 855"). The only existing defense (DUPLICATE_FINAL_EVENT_WINDOW_MS)
+// only catches an EXACT repeat of the previous transcript within 1.5s - a
+// growing transcript is never textually identical to the previous one, so
+// it sailed straight through and got fully re-parsed every time,
+// re-committing already-recorded numbers as if they were new. That
+// re-committing, interacting with the pre-existing fragment-merge/pending
+// logic (built for a different failure mode - a single number split
+// across events, e.g. "8" + "47"), is what produced the reported
+// fragmented/garbled live responses.
+//
+// Fix (see _recordFinalTranscript in cognitiveSpeechSession.js): when a
+// new final transcript is a strict prefix-extension of the immediately
+// previous one, only the newly appended remainder is parsed/committed -
+// the full transcript is still preserved unmodified in
+// getRawRecognitionEvents() either way.
+
+test('Test 1 - interim progression never creates separate responses; only the final "858" is recorded', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+
+    engine().onResult({ transcript: '8', timestamp: 900 });
+    engine().onResult({ transcript: '85', timestamp: 950 });
+    engine().onResult({ transcript: '858', timestamp: 990 });
+    engine().onFinalResult({ transcript: '858', timestamp: 1000 });
+
+    assert.deepEqual(session.getResults().parsedNumbers, [858]);
+});
+
+test('Test 2 - cumulative final transcripts ("861", "861 858", "861 858 855") produce exactly [861, 858, 855], not repeated fragments', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '861', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '861 858', timestamp: 2000 });
+    engine().onFinalResult({ transcript: '861 858 855', timestamp: 3000 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [861, 858, 855]);
+    assert.equal(results.numberOfResponses, 3);
+});
+
+test('Test 3 - multiple genuine numbers spoken in one event ("861 858 855 852") are still all recorded, not collapsed into one number', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '861 858 855 852', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [861, 858, 855, 852]);
+});
+
+test('Test 4 - a legitimately repeated response ("861 861 858") is preserved, never deduplicated by value', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '861 861 858', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [861, 861, 858]);
+});
+
+test('Test 4b - a legitimately repeated number still survives across cumulative final events', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '861', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '861 861 858', timestamp: 5000 }); // cumulative growth that happens to repeat 861
+    assert.deepEqual(session.getResults().parsedNumbers, [861, 861, 858]);
+});
+
+test('Test 4c - an EXACT repeat of the previous final transcript, well outside the duplicate window, is still preserved (not swallowed as zero-length cumulative growth)', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '861', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '861', timestamp: 5000 }); // 4s later - a genuine second "861", not a duplicate delivery
+    assert.deepEqual(session.getResults().parsedNumbers, [861, 861]);
+});
+
+test('Test 5 - stutter ("eight eight eight five five five eight") still collapses to 858', () => {
+    const { session, engine } = createSession({ startingNumber: 861, expectedResponseDigits: 3 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight eight eight five five five eight', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [858]);
+});
+
+test('Test 6 - fillers ("eight um um five eight") still resolve to 858', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: 'eight um um five eight', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [858]);
+});
+
+test('stutter collapsing never merges two separate responses: "858 855" stays [858, 855]', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '858 855', timestamp: 1000 });
+    assert.deepEqual(session.getResults().parsedNumbers, [858, 855]);
+});
+
+test('Test 7 - fragmented browser events across 4 cumulative final results end with exactly [861, 858, 855, 852], never duplicated', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+
+    engine().onFinalResult({ transcript: '861', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '861 858', timestamp: 2000 });
+    engine().onFinalResult({ transcript: '861 858 855', timestamp: 3000 });
+    engine().onFinalResult({ transcript: '861 858 855 852', timestamp: 4000 });
+
+    const results = session.getResults();
+    assert.deepEqual(results.parsedNumbers, [861, 858, 855, 852]);
+    assert.equal(results.numberOfResponses, 4);
+});
+
+test('a genuinely new, unrelated final transcript (not a prefix-extension) is never trimmed against the previous one', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '861 858 855', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '957', timestamp: 2000 }); // unrelated - does not start with "861 858 855"
+    assert.deepEqual(session.getResults().parsedNumbers, [861, 858, 855, 957]);
+});
+
+test('the raw recognition event audit trail still preserves each cumulative transcript exactly as the browser delivered it, untrimmed', () => {
+    const { session, engine } = createSession({ startingNumber: 861 });
+    session.start();
+    engine().onFinalResult({ transcript: '861', timestamp: 1000 });
+    engine().onFinalResult({ transcript: '861 858', timestamp: 2000 });
+
+    const events = session.getRawRecognitionEvents();
+    assert.deepEqual(events.map((e) => e.rawTranscript), ['861', '861 858'], 'the full cumulative transcript is never trimmed in the audit trail, only in what gets parsed');
+});
