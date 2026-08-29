@@ -8,10 +8,26 @@ experiments beyond it.
 
 ```
 npm install
+cp .env.example .env   # fill in UF_NAVIGATOR_API_KEY / ADMIN_API_TOKEN - see below
 npm start
 ```
 
-Then open http://localhost:3000.
+Then open http://localhost:3000 (participant experiment) or
+http://localhost:3000/admin (research/admin dashboard).
+
+### Cognitive speech recording & admin dashboard
+
+The cognitive speech phases record the participant's complete audio and
+transcribe/score it on the backend after each phase - see
+`docs/data-flow.md` for the full data flow, privacy notes, and the known
+production-storage gap (the default SQLite/local-filesystem setup is for
+local dev only).
+
+- `UF_NAVIGATOR_API_KEY` - if unset, transcription automatically falls back
+  to a deterministic stub (clearly logged) so the app still runs end-to-end
+  without a real key or network access.
+- `ADMIN_API_TOKEN` - required for the `/admin` dashboard's API
+  (`/api/admin/*`); without it, the admin API refuses every request.
 
 ## Project layout
 

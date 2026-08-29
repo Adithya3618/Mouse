@@ -1,0 +1,259 @@
+/* Admin/research dashboard - NOT participant-facing. Reuses the same
+   design tokens as the participant app (see css/intake.css's :root block)
+   so the two feel like one product, but lives entirely under
+   app/frontend/admin/ as its own self-contained page set. */
+
+:root {
+  --paper: #F6F7F5;
+  --panel: #FFFFFF;
+  --ink: #12181B;
+  --slate: #6B7680;
+  --line: #DEE3E1;
+  --accent: #147D6F;
+  --accent-soft: #E4F3EF;
+  --amber: #C97A22;
+  --amber-soft: #FBEEDC;
+  --off: #EDEEEC;
+  --danger: #B3261E;
+  --danger-soft: #FBE7E5;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.admin-topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.admin-topbar h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.admin-topbar a {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.admin-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 28px 64px;
+}
+
+.mono { font-family: 'IBM Plex Mono', monospace; }
+
+.eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 0 0 4px;
+}
+
+.filters-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.filters-bar input[type="text"],
+.filters-bar input[type="number"],
+.filters-bar select {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.filters-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--slate);
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+table.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.admin-table th,
+table.admin-table td {
+  text-align: left;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+table.admin-table th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--slate);
+  background: var(--off);
+}
+
+table.admin-table tbody tr {
+  cursor: pointer;
+}
+
+table.admin-table tbody tr:hover {
+  background: var(--accent-soft);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  text-transform: uppercase;
+}
+
+.badge.complete { background: var(--accent-soft); color: var(--accent); }
+.badge.incomplete { background: var(--amber-soft); color: var(--amber); }
+.badge.review { background: var(--danger-soft); color: var(--danger); }
+
+.row.correct { color: var(--accent); }
+.row.incorrect { color: var(--danger); font-weight: 600; }
+.row.unresolved { color: var(--slate); font-style: italic; }
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  flex: 1 1 140px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+.stat-card .value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.stat-card .label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--slate);
+}
+
+.session-card {
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+
+.session-card:hover { background: var(--accent-soft); }
+
+.session-card h3 { margin: 0 0 4px; font-size: 15px; }
+
+.phase-block {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.phase-block-header {
+  padding: 14px 18px;
+  background: var(--off);
+  border-bottom: 1px solid var(--line);
+}
+
+.phase-block-header h3 { margin: 0 0 4px; font-size: 15px; }
+
+.phase-block-body { padding: 18px; }
+
+.transcript-box {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  background: var(--off);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 12px;
+}
+
+.error-box {
+  color: var(--danger);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+button.admin-button {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  padding: 8px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+
+button.admin-button:hover { opacity: 0.9; }
+button.admin-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.status-line {
+  font-size: 12px;
+  color: var(--slate);
+  margin-top: 8px;
+}
+
+.status-line.is-error { color: var(--danger); }
+
+a.back-link {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  display: inline-block;
+  margin-bottom: 16px;
+}
+
+audio { width: 100%; margin-bottom: 6px; }

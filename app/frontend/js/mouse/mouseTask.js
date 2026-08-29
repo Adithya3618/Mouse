@@ -6,6 +6,19 @@
 import { spawnTarget } from './target.js';
 import { formatTime } from '../timer/timer.js';
 
+// How often a new target appears, in ms. THE single place to adjust this
+// task's pace - everything below reads only this constant (or an explicit
+// override passed to runMouseSession), never a separate hardcoded interval.
+//
+// Previously there was no dedicated spawn-rate constant at all: the
+// interval was `difficultyLevel * 1000` (1000ms at the old default
+// difficulty of 1), which meant "how fast targets spawn" was only
+// reachable by tracing a value through config/mouseTaskConfig.js's
+// `defaultDifficulty` and a multiplication buried in this file. 1750ms
+// sits in the middle of the requested ~1.5-2s "noticeably slower, more
+// consistent pace."
+export const TARGET_SPAWN_INTERVAL_MS = 1750;
+
 export function runMouseSession({
     gameScreenContainer,
     gameContainer,
@@ -16,9 +29,18 @@ export function runMouseSession({
     bgColor,
     targetColor,
     targetSize,
-    difficultyLevel,
+    targetSpawnIntervalMs = TARGET_SPAWN_INTERVAL_MS,
     durationMs,
-    onComplete
+    onComplete,
+    // Test-only seams (all default to the real browser/task behavior, so
+    // no caller in the running app needs to change) - see
+    // tests/mouse/mouseTask.test.mjs, which overrides these to verify the
+    // spawn cadence deterministically without real waiting or a DOM.
+    documentRef = (typeof document !== 'undefined' ? document : undefined),
+    spawnTargetFn = spawnTarget,
+    setIntervalFn = setInterval,
+    clearIntervalFn = clearInterval,
+    setTimeoutFn = setTimeout
 }) {
     gameScreenContainer.style.display = 'block';
     gameContainer.style.display = 'block';
@@ -35,10 +57,10 @@ export function runMouseSession({
     function onDocumentClick() {
         clickCount++;
     }
-    document.addEventListener('click', onDocumentClick);
+    documentRef.addEventListener('click', onDocumentClick);
 
     let timeLeft = Math.round(durationMs / 1000);
-    const gameTimer = setInterval(() => {
+    const gameTimer = setIntervalFn(() => {
         timeLeft--;
         if (timeLeft <= 5) {
             endingElement.style.display = 'block';
@@ -46,18 +68,23 @@ export function runMouseSession({
         }
         timerElement.textContent = formatTime(timeLeft);
         if (timeLeft <= 0) {
-            clearInterval(gameTimer);
+            clearIntervalFn(gameTimer);
             endingElement.style.display = 'none';
         }
     }, 1000);
 
-    const gameInterval = setInterval(() => {
+    // The ONE source of new targets - a single setInterval, so the spawn
+    // rate is always exactly targetSpawnIntervalMs regardless of how many
+    // targets the participant clicks. Clicking a target (see target.js's
+    // onHit) never spawns a replacement itself and never touches this
+    // timer, so a fast clicker can never trigger rapid-fire spawning.
+    const gameInterval = setIntervalFn(() => {
         if (!isGameActive) {
-            clearInterval(gameInterval);
+            clearIntervalFn(gameInterval);
             return;
         }
         numberOfTargets += 1;
-        spawnTarget({
+        spawnTargetFn({
             container: gameContainer,
             color: targetColor,
             size: targetSize,
@@ -66,17 +93,17 @@ export function runMouseSession({
                 hitCount++;
             }
         });
-    }, difficultyLevel * 1000);
+    }, targetSpawnIntervalMs);
 
-    setTimeout(() => {
+    setTimeoutFn(() => {
         isGameActive = false;
-        clearInterval(gameInterval);
-        document.removeEventListener('click', onDocumentClick);
+        clearIntervalFn(gameInterval);
+        documentRef.removeEventListener('click', onDocumentClick);
 
         gameScreenContainer.style.display = 'none';
         gameContainer.style.display = 'none';
         timerElement.style.display = 'none';
-        document.body.style.cursor = 'auto';
+        documentRef.body.style.cursor = 'auto';
 
         onComplete({ clickCount, hitCount, numberOfTargets });
     }, durationMs);

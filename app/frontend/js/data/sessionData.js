@@ -44,7 +44,16 @@ export function startPhaseRecord(session, phaseDescriptor, extra = {}) {
         startedAt: new Date().toISOString(),
         endedAt: null,
         mousePerformance: null,
-        cognitivePerformance: null
+        cognitivePerformance: null,
+        // Tracks the background recording upload/transcription/scoring
+        // pipeline for cognitive-active phases (see
+        // experiment/experimentController.js and
+        // cognitive/cognitiveAudioSession.js) - null for phases with no
+        // cognitive speech component at all. { status: 'pending'|'failed', error }
+        // while cognitivePerformance is still being produced;
+        // cognitivePerformance itself is only ever set once, by
+        // recordCognitivePerformance() below, on success.
+        cognitiveProcessing: null
     };
     session.phases.push(record);
     return record;
@@ -73,14 +82,35 @@ export function recordMousePerformance(record, { totalTargets, totalClicks, tota
 }
 
 // Stores cognitive (speech) performance for a single phase, using the
-// scoring produced by cognitive/cognitiveSpeechSession.js#getResults().
+// scoring produced by the backend's speechProcessingService.js (the same
+// result shape the deleted CognitiveSpeechSession#getResults() used to
+// return locally, before transcription moved server-side).
 // Mirrors recordMousePerformance() above: each cognitive-active phase
 // (SUBTRACTION_<n>, DUAL_TASK_<n>) gets its own independent
 // cognitivePerformance object, and it is never combined with that phase's
 // mousePerformance into a single score.
 export function recordCognitivePerformance(record, results) {
     record.cognitivePerformance = { ...results };
+    record.cognitiveProcessing = { status: 'ready' };
     return record.cognitivePerformance;
+}
+
+// Marked as soon as a cognitive-active phase ends and its recording upload
+// begins - see experiment/experimentController.js#_exitPhase, which never
+// awaits the actual upload/transcription/scoring before continuing.
+export function recordCognitiveProcessingPending(record) {
+    record.cognitiveProcessing = { status: 'pending' };
+    return record.cognitiveProcessing;
+}
+
+// The recording/transcription/scoring pipeline failed for this phase (e.g.
+// a network error or a failed transcription) - recorded as its own status
+// rather than silently leaving cognitivePerformance null with no
+// explanation. See ui/resultsScreen.js, which renders this as "Unavailable"
+// rather than as zero/blank.
+export function recordCognitiveProcessingFailed(record, error) {
+    record.cognitiveProcessing = { status: 'failed', error: error || 'Unknown error' };
+    return record.cognitiveProcessing;
 }
 
 export function endSession(session) {

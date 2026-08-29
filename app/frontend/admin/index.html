@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Research Dashboard — Participants</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div class="admin-topbar">
+    <h1>Cognitive Speech Research Dashboard</h1>
+    <span class="mono" style="color: var(--slate); font-size: 12px;">Admin/research only — not participant-facing</span>
+  </div>
+
+  <div class="admin-main">
+    <p class="eyebrow">Participants</p>
+
+    <div class="filters-bar">
+      <input type="text" id="searchInput" placeholder="Search participant ID…">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="Complete">Complete</option>
+        <option value="Incomplete">Incomplete</option>
+        <option value="No sessions">No sessions</option>
+      </select>
+      <input type="number" id="minAccuracyInput" placeholder="Min accuracy %" min="0" max="100">
+      <label><input type="checkbox" id="needsReviewFilter"> Needs review only</label>
+      <select id="sortSelect">
+        <option value="participant">Sort: Participant ID</option>
+        <option value="accuracy">Sort: Accuracy</option>
+        <option value="sessions">Sort: Session count</option>
+        <option value="errors">Sort: Incorrect responses</option>
+      </select>
+    </div>
+
+    <div class="admin-table-wrap">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Participant ID</th>
+            <th>Sessions</th>
+            <th>Accuracy</th>
+            <th>Total Responses</th>
+            <th>Incorrect</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="participantsTableBody"></tbody>
+      </table>
+    </div>
+    <p class="status-line" id="statusLine"></p>
+  </div>
+
+  <script type="module" src="../js/admin/participantsList.js"></script>
+</body>
+</html>

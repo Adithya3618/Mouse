@@ -79,10 +79,40 @@ const MIN_VALID_DIGIT_SEQUENCE_LENGTH = 3;
 // consumed here. This does not affect any legitimate single number
 // (e.g. "nine hundred sixty four" still matches whole, since "four" here
 // is not followed by "hundred").
+// Third alternative (2026 update, alongside the merge in
+// mergeShortDigitRunsAndParse below): casual spoken English often drops
+// "hundred" entirely, the same way people read a year aloud ("nineteen
+// eighty-four") - "eight forty nine" meaning 849, not a genuinely separate
+// "eight" and "forty nine". This is the word-form counterpart of the
+// digit-run merge below ("8" + "49" -> 849): a leading ones-word directly
+// followed by a teens/tens[-ones] phrase, with NO "hundred" in between.
+// Unlike the hundred-anchored alternative above, the tens/teens tail here
+// is mandatory, not optional - a bare leading ones-word with nothing after
+// it is still too weak a signal to resolve on its own (same "never guess"
+// rule already applied to a lone ones-word elsewhere in this file), and is
+// tried only after the hundred-anchored alternative fails to match, so
+// "eight hundred forty nine" is never misread through this branch instead.
+// Reuses the same `(?![\s-]+hundred)` boundary guard on its own optional
+// trailing ones-word, for the same reason described above.
+//
+// SEPARATOR_PATTERN: unlike every other gap in this regex (plain `\s+`),
+// the gap between this branch's leading ones-word and its tens/teens tail
+// tolerates a pause - "uh eight ... forty nine" - by also allowing
+// pause-punctuation (".", ",") and filler words in place of/alongside
+// whitespace. A leading filler ("uh" before "eight") needs no special
+// handling at all: matchAll simply finds this alternative's match starting
+// at "eight", not "uh" - regex global search already skips ahead to the
+// next position that succeeds. parseSpokenNumber()'s implicit-hundred
+// branch below is what actually turns the resulting raw text ("eight ...
+// forty nine") into 849, using the same FILLER_WORDS set.
+const SEPARATOR_PATTERN = `(?:[\\s.,]|${[...FILLER_WORDS].join('|')})+`;
+
 const NUMBER_SEGMENT_PATTERN = new RegExp(
     '(\\d+)' +
     '|' +
-    `(?:${ONES_WORDS.join('|')})\\s+hundred(?:\\s+(?:and\\s+)?(?:${TEENS_WORDS.join('|')}|(?:${TENS_WORDS.join('|')})(?:[\\s-]+(?:${ONES_WORDS.join('|')})(?![\\s-]+hundred))?))?`,
+    `(?:${ONES_WORDS.join('|')})\\s+hundred(?:\\s+(?:and\\s+)?(?:${TEENS_WORDS.join('|')}|(?:${TENS_WORDS.join('|')})(?:[\\s-]+(?:${ONES_WORDS.join('|')})(?![\\s-]+hundred))?))?` +
+    '|' +
+    `(?:${ONES_WORDS.join('|')})${SEPARATOR_PATTERN}(?:${TEENS_WORDS.join('|')}|(?:${TENS_WORDS.join('|')})(?:[\\s-]+(?:${ONES_WORDS.join('|')})(?![\\s-]+hundred))?)`,
     'gi'
 );
 
@@ -92,6 +122,35 @@ function normalizeWords(text) {
         .replace(/[^a-z0-9\s-]/g, ' ')
         .split(/[\s-]+/)
         .filter(Boolean);
+}
+
+// Sums a short run of teens/tens/ones words (optionally "and"-joined, and
+// tolerating filler words - see SEPARATOR_PATTERN above) into a value under
+// 100, for parseSpokenNumber()'s implicit-hundred branch below. Returns
+// null the instant an unrecognized word appears - the same "never guess"
+// rule as everywhere else in this file - so callers never mistake a
+// partially-matched tail for a confident one.
+function sumTwoDigitWords(words) {
+    let total = 0;
+    let recognizedAnyWord = false;
+    for (const word of words) {
+        if (word === 'and' || FILLER_WORDS.has(word)) {
+            continue;
+        }
+        if (word in TEENS_VALUES) {
+            total += TEENS_VALUES[word];
+            recognizedAnyWord = true;
+        } else if (word in TENS_VALUES) {
+            total += TENS_VALUES[word];
+            recognizedAnyWord = true;
+        } else if (word in ONES_VALUES) {
+            total += ONES_VALUES[word];
+            recognizedAnyWord = true;
+        } else {
+            return null;
+        }
+    }
+    return recognizedAnyWord ? total : null;
 }
 
 // Parses ONE number expression (already isolated from surrounding text) -
@@ -118,6 +177,25 @@ export function parseSpokenNumber(text) {
 
     const words = normalizeWords(raw);
     if (words.length === 0) {
+        return { raw, value: null, resolved: false };
+    }
+
+    // IMPLICIT HUNDREDS PLACE (2026 update - see NUMBER_SEGMENT_PATTERN's
+    // third alternative above). If "hundred" never appears at all, AND the
+    // very first word is a ones-word, AND at least one more word follows -
+    // that leading word is this number's hundreds-place digit exactly as
+    // if "hundred" had been spoken ("eight forty nine" -> 8*100 + 49 =
+    // 849). A lone ones-word by itself is still never enough (falls
+    // through to the unchanged logic below, which requires "hundred" to
+    // resolve at all) - only a genuine ones-word + valid two-digit tail
+    // counts. Never applied when "hundred" IS present, so
+    // "eight hundred forty nine" is always handled by the unchanged logic
+    // below instead.
+    if (!words.includes('hundred') && words.length > 1 && words[0] in ONES_VALUES) {
+        const tailValue = sumTwoDigitWords(words.slice(1));
+        if (tailValue != null && tailValue < 100) {
+            return { raw, value: ONES_VALUES[words[0]] * 100 + tailValue, resolved: true };
+        }
         return { raw, value: null, resolved: false };
     }
 
@@ -365,5 +443,58 @@ export function parseNumbersFromTranscript(transcript, { expectedDigits = MIN_VA
         return [parseDigitSequence(text, { minDigits: expectedDigits, targetDigits: expectedDigits })];
     }
 
-    return matches.map((segment) => parseSpokenNumber(segment));
+    return mergeShortDigitRunsAndParse(matches, expectedDigits);
+}
+
+// ADJACENT SHORT-DIGIT-RUN MERGING (2026 update: full-phase audio recording
+// + backend transcription replaced live, event-by-event browser speech
+// recognition). Previously, a split like "8" + "49" for a spoken "849"
+// arrived as two separate LIVE recognition events, and merging them back
+// together was cognitive/cognitiveSpeechSession.js's job (matching pending
+// fragments across events within a short time window). That class no
+// longer exists: the whole phase is now one audio recording, transcribed
+// once into a single complete transcript string - so the exact same
+// splitting can still show up (a transcription engine may render a
+// mid-utterance pause as "8 49" or "8-49" in otherwise-plain text), but
+// there are no separate timed events left to reconcile. This merges it at
+// the text level instead, applying the same "never overshoot
+// expectedDigits, never touch anything already complete" rule
+// cognitiveSpeechSession.js used to enforce via timing.
+//
+// Only ever merges two or more CONSECUTIVE pure-digit-run matches (never a
+// "<ones> hundred ..." word-form match, which is always exactly
+// expectedDigits by construction already), and only while the running
+// combined length is still under expectedDigits and the next run would not
+// push it over. A digit run that already reaches expectedDigits on its own
+// (e.g. each of "960 957 954") is left completely alone, so unrelated,
+// already-complete numbers spoken in sequence are never merged together.
+function mergeShortDigitRunsAndParse(matches, expectedDigits) {
+    const results = [];
+    let i = 0;
+    while (i < matches.length) {
+        const match = matches[i];
+        const isDigitRun = /^\d+$/.test(match);
+
+        if (!isDigitRun || match.length >= expectedDigits) {
+            results.push(parseSpokenNumber(match));
+            i += 1;
+            continue;
+        }
+
+        let combined = match;
+        let j = i + 1;
+        while (
+            j < matches.length &&
+            /^\d+$/.test(matches[j]) &&
+            combined.length < expectedDigits &&
+            combined.length + matches[j].length <= expectedDigits
+        ) {
+            combined += matches[j];
+            j += 1;
+        }
+
+        results.push(parseSpokenNumber(combined));
+        i = j;
+    }
+    return results;
 }

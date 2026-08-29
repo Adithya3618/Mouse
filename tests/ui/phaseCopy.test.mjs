@@ -8,7 +8,7 @@ test('returns null for no current phase', () => {
 
 test('motor baseline: no starting number, timer shown, no internal phase id in copy', () => {
     const display = getPhaseDisplay({ phaseType: 'motor', subtractionValue: null }, null);
-    assert.equal(display.title, 'Mouse-Clicking Task');
+    assert.equal(display.title, 'Task 1 — Click Targets (2 min)');
     assert.equal(display.showStartingNumber, false);
     assert.equal(display.showTimer, true);
     assert.ok(!display.title.includes('MOTOR_BASELINE'));
@@ -20,9 +20,9 @@ test('cognitive (subtraction-only): shows subtraction value and starting number 
         { phaseType: 'cognitive', subtractionValue: 7 },
         { startingNumber: 892 }
     );
-    assert.equal(display.title, 'Count Backward by 7');
+    assert.equal(display.title, 'Count Backward by Multiples of 7');
     assert.ok(display.instruction.includes('892'));
-    assert.ok(display.instruction.includes('by 7'));
+    assert.ok(display.instruction.includes('multiples of 7'));
     assert.equal(display.showStartingNumber, true);
     assert.equal(display.startingNumber, 892);
 });
@@ -53,10 +53,34 @@ test('transition: no timer badge (uses its own big countdown), no starting numbe
 
 test('recovery: tells the participant to stop, no starting number', () => {
     const display = getPhaseDisplay({ phaseType: 'recovery', subtractionValue: null }, null);
-    assert.equal(display.title, 'Recovery Period');
+    assert.equal(display.title, 'Recovery Period (1.5 min)');
     assert.ok(display.instruction.toLowerCase().includes('stop'));
     assert.equal(display.showStartingNumber, false);
     assert.equal(display.showTimer, true);
+});
+
+test('recovery immediately before the by-7 series adds a transition line; the other two recoveries do not', () => {
+    const beforeSeven = getPhaseDisplay({ phaseType: 'recovery', subtractionValue: null, phaseId: 'RECOVERY_AFTER_DUAL_3' }, null);
+    assert.ok(beforeSeven.instruction.includes('Next you will click and count back by 7'));
+
+    const afterMotor = getPhaseDisplay({ phaseType: 'recovery', subtractionValue: null, phaseId: 'RECOVERY_AFTER_MOTOR' }, null);
+    assert.ok(!afterMotor.instruction.includes('Next you will'));
+
+    const beforeSeventeen = getPhaseDisplay({ phaseType: 'recovery', subtractionValue: null, phaseId: 'RECOVERY_AFTER_DUAL_7' }, null);
+    assert.ok(!beforeSeventeen.instruction.includes('Next you will'));
+});
+
+test('cognitive/dual-task wording is consistent across all three subtraction values ("multiples of")', () => {
+    for (const value of [3, 7, 17]) {
+        const cognitive = getPhaseDisplay({ phaseType: 'cognitive', subtractionValue: value }, { startingNumber: 900 });
+        assert.ok(cognitive.title.includes(`Multiples of ${value}`));
+        assert.ok(cognitive.instruction.includes(`multiples of ${value}`));
+
+        const dual = getPhaseDisplay({ phaseType: 'dual-task', subtractionValue: value }, { startingNumber: 900 });
+        assert.ok(dual.title.includes(`Multiples of ${value}`));
+        assert.ok(dual.instruction.includes(`multiples of ${value}`));
+        assert.ok(dual.instruction.toLowerCase().includes('click'));
+    }
 });
 
 test('no phase copy ever contains a raw phase id', () => {
@@ -83,7 +107,7 @@ test('preparation before motor baseline: no starting number, no timer badge, sho
         { phaseType: 'preparation', subtractionValue: null, precedesPhaseType: 'motor' },
         null
     );
-    assert.equal(display.title, 'Mouse-Clicking Task');
+    assert.equal(display.title, 'Task 1 — Click Targets (2 min)');
     assert.ok(display.instruction.toLowerCase().includes('get ready'));
     assert.equal(display.showTimer, false);
     assert.equal(display.showStartingNumber, false);
@@ -96,10 +120,10 @@ test('preparation before subtraction-only: shows the subtraction rule and starti
         { phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'cognitive' },
         { startingNumber: 947 }
     );
-    assert.equal(display.title, 'Count Backward by 3');
+    assert.equal(display.title, 'Count Backward by Multiples of 3');
     assert.ok(display.instruction.includes('947'));
     assert.ok(display.instruction.toLowerCase().includes('get ready'));
-    assert.ok(display.instruction.toLowerCase().includes('counting aloud by 3'));
+    assert.ok(display.instruction.toLowerCase().includes('multiples of 3'));
     assert.equal(display.showTimer, false);
     assert.equal(display.showStartingNumber, true);
     assert.equal(display.showPrepCountdown, true);

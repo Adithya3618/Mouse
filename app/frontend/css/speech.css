@@ -1,55 +1,91 @@
-/* Live microphone/transcript UI (js/ui/speechTranscriptPanel.js). Shares
-   the design tokens defined in css/intake.css's :root block, same as
-   css/experiment-screen.css. Deliberately its own file/module, separate
-   from the mouse task's CSS, HTML and JS. */
+/* Participant-facing recording indicator (js/ui/recordingPanel.js).
+   Replaces the old live microphone/transcript UI - there is no transcript
+   to display anymore, only a microphone icon, a recording status line, and
+   an elapsed/duration timer. Shares the design tokens defined in
+   css/intake.css's :root block, same as css/experiment-screen.css.
+   Deliberately its own file/module, separate from the mouse task's CSS,
+   HTML and JS. */
 
 .speech-panel {
   margin-top: 18px;
   margin-bottom: 4px;
-  padding: 16px 20px;
-  max-width: 720px;
+  padding: 28px 20px;
+  max-width: 420px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
   border-radius: 4px;
+  text-align: center;
 }
 
-.speech-status {
+.recording-icon {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 14px;
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+}
+
+.speech-panel.is-recording .recording-icon {
+  opacity: 1;
+  animation: recording-pulse 1.6s ease-in-out infinite;
+}
+
+.recording-status {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--slate);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
-.speech-status.is-active {
+.speech-panel.is-recording .recording-status {
   color: var(--accent);
 }
 
-.speech-live-label {
-  display: block;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: var(--slate);
-  margin-bottom: 6px;
+.speech-panel.is-recording .recording-status::before {
+  content: '● ';
+  color: #C0392B;
 }
 
-.speech-live-value {
-  font-size: 19px;
-  line-height: 1.4;
+.recording-timer {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
   color: var(--ink);
-  min-height: 1.4em;
+  margin-bottom: 10px;
+}
+
+.recording-caption {
+  font-size: 13px;
+  color: var(--slate);
   margin: 0;
-  word-break: break-word;
 }
 
 .speech-error {
   margin: 12px 0 0 0;
   font-size: 13px;
   color: #B3261E;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+/* Post-experiment processing state (js/ui/resultsScreen.js) - shown only
+   while a phase's recording is still being transcribed/scored on the
+   backend, before the results tables/export are ready. */
+.processing-status {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  letter-spacing: .05em;
+  color: var(--slate);
+  margin: 0 0 20px 0;
+  padding: 12px 16px;
+  background: var(--off);
+  border-radius: 4px;
 }
 
 @media (max-width: 720px) {

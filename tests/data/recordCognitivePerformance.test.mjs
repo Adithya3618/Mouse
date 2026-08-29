@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSession, startPhaseRecord, recordCognitivePerformance } from '../../app/frontend/js/data/sessionData.js';
+import {
+    createSession,
+    startPhaseRecord,
+    recordCognitivePerformance,
+    recordCognitiveProcessingPending,
+    recordCognitiveProcessingFailed
+} from '../../app/frontend/js/data/sessionData.js';
 
 function fakeCognitiveResults(overrides = {}) {
     return {
@@ -33,6 +39,40 @@ test('a freshly started phase record has cognitivePerformance: null, mirroring m
         duration: 120
     }, { startingNumber: 947 });
 
+    assert.equal(record.cognitivePerformance, null);
+    assert.equal(record.cognitiveProcessing, null);
+});
+
+test('recordCognitiveProcessingPending marks the phase as pending without touching cognitivePerformance', () => {
+    const session = createSession();
+    const record = startPhaseRecord(session, { phaseId: 'SUBTRACTION_3', phaseType: 'cognitive', mouseActive: false, cognitiveActive: true, subtractionValue: 3, duration: 120 });
+
+    recordCognitiveProcessingPending(record);
+
+    assert.equal(record.cognitiveProcessing.status, 'pending');
+    assert.equal(record.cognitivePerformance, null);
+});
+
+test('recordCognitivePerformance marks processing as ready alongside the results', () => {
+    const session = createSession();
+    const record = startPhaseRecord(session, { phaseId: 'SUBTRACTION_3', phaseType: 'cognitive', mouseActive: false, cognitiveActive: true, subtractionValue: 3, duration: 120 });
+
+    recordCognitiveProcessingPending(record);
+    recordCognitivePerformance(record, fakeCognitiveResults());
+
+    assert.equal(record.cognitiveProcessing.status, 'ready');
+    assert.equal(record.cognitivePerformance.correctResponses, 3);
+});
+
+test('recordCognitiveProcessingFailed records the failure without fabricating cognitivePerformance', () => {
+    const session = createSession();
+    const record = startPhaseRecord(session, { phaseId: 'SUBTRACTION_3', phaseType: 'cognitive', mouseActive: false, cognitiveActive: true, subtractionValue: 3, duration: 120 });
+
+    recordCognitiveProcessingPending(record);
+    recordCognitiveProcessingFailed(record, 'network error');
+
+    assert.equal(record.cognitiveProcessing.status, 'failed');
+    assert.equal(record.cognitiveProcessing.error, 'network error');
     assert.equal(record.cognitivePerformance, null);
 });
 

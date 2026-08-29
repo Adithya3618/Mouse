@@ -18,7 +18,7 @@ export function getPhaseDisplay(phase, phaseRecord) {
 
         case 'motor':
             return {
-                title: 'Mouse-Clicking Task',
+                title: 'Task 1 — Click Targets (2 min)',
                 instruction: 'Click each target as quickly and accurately as possible. Continue clicking the targets until the timer reaches zero.',
                 showTimer: true,
                 showStartingNumber: false,
@@ -28,8 +28,8 @@ export function getPhaseDisplay(phase, phaseRecord) {
 
         case 'cognitive':
             return {
-                title: `Count Backward by ${phase.subtractionValue}`,
-                instruction: `Starting with ${startingNumberLabel}, count backward aloud by ${phase.subtractionValue}. Continue counting backward until the timer reaches zero.`,
+                title: `Count Backward by Multiples of ${phase.subtractionValue}`,
+                instruction: `Starting with ${startingNumberLabel}, count backward by multiples of ${phase.subtractionValue} as many times as possible (2 minutes).`,
                 showTimer: true,
                 showStartingNumber: true,
                 showPrepCountdown: false,
@@ -38,8 +38,8 @@ export function getPhaseDisplay(phase, phaseRecord) {
 
         case 'dual-task':
             return {
-                title: `Count Backward by ${phase.subtractionValue} + Click Targets`,
-                instruction: `Continue counting backward aloud by ${phase.subtractionValue} while simultaneously clicking every target that appears.`,
+                title: `Count Backward by Multiples of ${phase.subtractionValue} + Click Targets`,
+                instruction: `Count backward by multiples of ${phase.subtractionValue} while clicking on the targets (2 minutes).`,
                 showTimer: true,
                 showStartingNumber: true,
                 showPrepCountdown: false,
@@ -60,15 +60,25 @@ export function getPhaseDisplay(phase, phaseRecord) {
                 startingNumber: null
             };
 
-        case 'recovery':
+        case 'recovery': {
+            // RECOVERY_AFTER_DUAL_3 is the one recovery immediately before
+            // the by-7 series begins - it gets an extra transition line so
+            // the participant knows what's coming next. The other two
+            // recoveries (after the motor baseline, and before the by-17
+            // series) are unchanged aside from the "(1.5 min)" addition
+            // below, since only this one transition was requested.
+            const isBeforeSubtraction7 = phase.phaseId === 'RECOVERY_AFTER_DUAL_3';
+            const instruction = 'Please stop counting and stop clicking. Sit quietly and relax until the timer reaches zero.'
+                + (isBeforeSubtraction7 ? ' Next you will click and count back by 7.' : '');
             return {
-                title: 'Recovery Period',
-                instruction: 'Please stop counting and stop clicking. Sit quietly and relax until the timer reaches zero.',
+                title: 'Recovery Period (1.5 min)',
+                instruction,
                 showTimer: true,
                 showStartingNumber: false,
                 showPrepCountdown: false,
                 startingNumber: null
             };
+        }
 
         default:
             return {
@@ -94,8 +104,8 @@ function getPreparationDisplay(phase, startingNumber, startingNumberLabel) {
     switch (phase.precedesPhaseType) {
         case 'cognitive':
             return {
-                title: `Count Backward by ${value}`,
-                instruction: `Starting with ${startingNumberLabel}, get ready to begin counting aloud by ${value}.`,
+                title: `Count Backward by Multiples of ${value}`,
+                instruction: `Starting with ${startingNumberLabel}, get ready to count backward by multiples of ${value}.`,
                 showTimer: false,
                 showStartingNumber: true,
                 showPrepCountdown: true,
@@ -104,8 +114,8 @@ function getPreparationDisplay(phase, startingNumber, startingNumberLabel) {
 
         case 'dual-task':
             return {
-                title: `Count Backward by ${value} + Click Targets`,
-                instruction: `Get ready to count backward by ${value} while clicking the targets.`,
+                title: `Count Backward by Multiples of ${value} + Click Targets`,
+                instruction: `Get ready to count backward by multiples of ${value} while clicking the targets.`,
                 showTimer: false,
                 showStartingNumber: true,
                 showPrepCountdown: true,
@@ -115,7 +125,7 @@ function getPreparationDisplay(phase, startingNumber, startingNumberLabel) {
         case 'motor':
         default:
             return {
-                title: 'Mouse-Clicking Task',
+                title: 'Task 1 — Click Targets (2 min)',
                 instruction: 'Get ready to begin clicking the targets.',
                 showTimer: false,
                 showStartingNumber: false,

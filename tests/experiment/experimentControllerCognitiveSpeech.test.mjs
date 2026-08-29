@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { ExperimentController } from '../../app/frontend/js/experiment/experimentController.js';
 import { experimentConfig } from '../../config/experimentConfig.js';
 
-// Verifies experimentController.js's wiring of the microphone/speech
-// system (see cognitive/cognitiveSpeechSession.js) - kept in its own file,
-// separate from tests/experiment/experimentController.test.mjs, so the
-// pre-existing mouse-task-focused test suite there stays untouched.
+// Verifies experimentController.js's wiring of the audio-recording system
+// (see cognitive/cognitiveAudioSession.js, which replaced the old live
+// Web Speech API session) - kept in its own file, separate from
+// tests/experiment/experimentController.test.mjs, so the pre-existing
+// mouse-task-focused test suite there stays untouched.
 //
 // A fully synchronous, test-controlled Timer stand-in - identical in
 // spirit to the one in experimentController.test.mjs.
@@ -32,10 +33,13 @@ function createControllableTimerFactory() {
 
 const fakeMouseTaskAdapter = { start() {}, stop() {} };
 
-// A fake CognitiveSpeechSession + factory that records its own lifecycle
-// (which phaseIds it was started/stopped for) without touching the real
-// Web Speech API, mirroring the mouse task's spy-adapter test pattern.
-function createSpyCognitiveSpeechSessionFactory() {
+// A fake CognitiveAudioSession + factory that records its own lifecycle
+// (which phaseIds it was started/stopped for) without touching any real
+// browser recording API, mirroring the mouse task's spy-adapter test
+// pattern. stop() resolves asynchronously (a promise, exactly like the real
+// upload/transcription/scoring pipeline) but sets stopped/micActive
+// synchronously first, mirroring the real class's own stop() ordering.
+function createSpyCognitiveAudioSessionFactory() {
     const startedFor = [];
     const stoppedFor = [];
     const sessions = [];
@@ -52,31 +56,32 @@ function createSpyCognitiveSpeechSessionFactory() {
                 this.micActive = true;
                 startedFor.push({ subtractionValue, startingNumber });
             },
-            stop() {
+            async stop() {
                 this.stopped = true;
                 this.micActive = false;
                 stoppedFor.push({ subtractionValue, startingNumber });
+                return {
+                    status: 'succeeded',
+                    results: {
+                        subtractionRule: subtractionValue,
+                        startingNumber,
+                        phaseStartTime: '2026-08-22T00:00:00.000Z',
+                        phaseEndTime: '2026-08-22T00:02:00.000Z',
+                        rawTranscript: '944 941 938',
+                        parsedNumbers: [944, 941, 938],
+                        expectedNumbers: [944, 941, 938],
+                        responses: [],
+                        correctResponses: 3,
+                        incorrectResponses: 0,
+                        unresolvedResponses: 0,
+                        numberOfResponses: 3,
+                        cognitiveAccuracy: 100,
+                        scoringMode: 'adaptive'
+                    }
+                };
             },
             isMicActive() {
                 return this.micActive;
-            },
-            getResults() {
-                return {
-                    subtractionRule: subtractionValue,
-                    startingNumber,
-                    phaseStartTime: '2026-08-22T00:00:00.000Z',
-                    phaseEndTime: '2026-08-22T00:02:00.000Z',
-                    rawTranscript: '944 941 938',
-                    parsedNumbers: [944, 941, 938],
-                    expectedNumbers: [944, 941, 938],
-                    responses: [],
-                    correctResponses: 3,
-                    incorrectResponses: 0,
-                    unresolvedResponses: 0,
-                    numberOfResponses: 3,
-                    cognitiveAccuracy: 100,
-                    scoringMode: 'adaptive'
-                };
             }
         };
         sessions.push(session);
@@ -91,16 +96,16 @@ function createSpyCognitiveSpeechSessionFactory() {
 
 function createTestController(overrides = {}) {
     const timers = createControllableTimerFactory();
-    const cognitiveSpeechSessionFactory = createSpyCognitiveSpeechSessionFactory();
+    const cognitiveAudioSessionFactory = createSpyCognitiveAudioSessionFactory();
     const controller = new ExperimentController({
         config: experimentConfig,
         timerFactory: timers.factory,
         mouseTaskAdapter: fakeMouseTaskAdapter,
-        cognitiveSpeechSessionFactory,
+        cognitiveAudioSessionFactory,
         logger: () => {},
         ...overrides
     });
-    return { controller, timers, cognitiveSpeechSessionFactory };
+    return { controller, timers, cognitiveAudioSessionFactory };
 }
 
 function runFullExperiment(controller, timers) {
@@ -111,68 +116,104 @@ function runFullExperiment(controller, timers) {
             controller.advance();
         } else {
             timers.complete();
+            if (phase.phaseType === 'recovery') {
+                controller.proceedFromRecovery();
+            }
         }
     }
 }
 
-test('the microphone/speech session is started only for SUBTRACTION_<n> and DUAL_TASK_<n>, never any other phase', () => {
-    const { controller, timers, cognitiveSpeechSessionFactory } = createTestController();
+// Lets every still-in-flight recording upload/transcription/scoring
+// promise settle - see experiment/experimentController.js#_exitPhase, which
+// deliberately never awaits them itself (that's the whole point: phase
+// timing must never be delayed by this).
+async function flushPendingCognitiveProcessing(controller) {
+    await Promise.allSettled(controller.getPendingCognitiveProcessing());
+}
+
+test('the microphone/recording session is started only for SUBTRACTION_<n> and DUAL_TASK_<n>, never any other phase', () => {
+    const { controller, timers, cognitiveAudioSessionFactory } = createTestController();
     runFullExperiment(controller, timers);
 
-    const startedSubtractionValues = cognitiveSpeechSessionFactory.startedFor.map((s) => s.subtractionValue).sort((a, b) => a - b);
+    const startedSubtractionValues = cognitiveAudioSessionFactory.startedFor.map((s) => s.subtractionValue).sort((a, b) => a - b);
     assert.deepEqual(startedSubtractionValues, [3, 3, 7, 7, 17, 17], 'started exactly twice per condition (subtraction-only + dual-task)');
-    assert.equal(cognitiveSpeechSessionFactory.startedFor.length, 6, 'exactly 6 cognitive-active phases in the whole protocol');
+    assert.equal(cognitiveAudioSessionFactory.startedFor.length, 6, 'exactly 6 cognitive-active phases in the whole protocol');
 });
 
 test('the microphone does not start during INSTRUCTIONS, preparation, motor baseline, recovery, or COMPLETE', () => {
-    const { controller, timers, cognitiveSpeechSessionFactory } = createTestController();
+    const { controller, timers, cognitiveAudioSessionFactory } = createTestController();
 
     controller.start(); // INSTRUCTIONS
-    assert.equal(cognitiveSpeechSessionFactory.sessions.length, 0);
+    assert.equal(cognitiveAudioSessionFactory.sessions.length, 0);
 
     controller.advance(); // PREPARE_MOTOR_BASELINE
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_MOTOR_BASELINE');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null);
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null);
 
     timers.complete(); // MOTOR_BASELINE (mouse-only, no cognitive)
     assert.equal(controller.getCurrentPhaseId(), 'MOTOR_BASELINE');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null);
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null);
 
-    timers.complete(); // RECOVERY_AFTER_MOTOR
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_MOTOR');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null, 'microphone must be inactive during recovery');
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone must be inactive during recovery');
 
-    timers.complete(); // PREPARE_SUBTRACTION_3
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null, 'microphone must be inactive during preparation, even though the starting number is already known');
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone must be inactive during preparation, even though the starting number is already known');
 
-    assert.equal(cognitiveSpeechSessionFactory.sessions.length, 0, 'no speech session should have been created yet at all');
+    assert.equal(cognitiveAudioSessionFactory.sessions.length, 0, 'no audio session should have been created yet at all');
 });
 
 test('the microphone starts exactly when SUBTRACTION_3 begins, and stops exactly when it ends', () => {
-    const { controller, timers, cognitiveSpeechSessionFactory } = createTestController();
+    const { controller, timers, cognitiveAudioSessionFactory } = createTestController();
     controller.start();
     controller.advance(); // PREPARE_MOTOR_BASELINE
-    timers.complete(); // MOTOR_BASELINE
-    timers.complete(); // RECOVERY_AFTER_MOTOR
-    timers.complete(); // PREPARE_SUBTRACTION_3
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
 
     timers.complete(); // -> SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'SUBTRACTION_3');
-    const session = controller.getCurrentCognitiveSpeechSession();
-    assert.ok(session, 'a speech session must be running now that the real cognitive phase has begun');
+    const session = controller.getCurrentCognitiveAudioSession();
+    assert.ok(session, 'an audio session must be running now that the real cognitive phase has begun');
     assert.equal(session.isMicActive(), true);
     assert.equal(session.subtractionValue, 3);
 
     timers.complete(); // -> PREPARE_DUAL_TASK_3
     assert.equal(session.stopped, true, 'the SUBTRACTION_3 session must be stopped the instant the phase ends');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null, 'microphone must be inactive again during the next preparation');
-    assert.equal(cognitiveSpeechSessionFactory.stoppedFor.length, 1);
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone must be inactive again during the next preparation');
+    assert.equal(cognitiveAudioSessionFactory.stoppedFor.length, 1);
 });
 
-test('cognitive results are recorded onto the correct phase record in session data', () => {
+test('phase advancement is never delayed by recording upload/transcription/scoring - the timer-driven advance is fully synchronous', () => {
+    // This is the core timing guarantee the whole redesign depends on: even
+    // though session.stop() kicks off an async pipeline, advance() itself
+    // must complete synchronously and move the state machine forward before
+    // that pipeline has any chance to resolve.
+    const { controller, timers } = createTestController();
+    controller.start();
+    controller.advance();
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    timers.complete(); // -> SUBTRACTION_3
+
+    timers.complete(); // -> PREPARE_DUAL_TASK_3 (this is the phase transition under test)
+    assert.equal(controller.getCurrentPhaseId(), 'PREPARE_DUAL_TASK_3', 'advanced synchronously, without waiting on the pending upload/scoring promise');
+
+    const subtraction3 = controller.getSession().phases.find((p) => p.phaseId === 'SUBTRACTION_3');
+    assert.equal(subtraction3.cognitiveProcessing.status, 'pending', 'marked pending immediately, before the async pipeline has resolved');
+    assert.equal(subtraction3.cognitivePerformance, null, 'not yet populated - the upload/transcription/scoring promise has not resolved yet');
+});
+
+test('cognitive results are recorded onto the correct phase record in session data, once processing settles', async () => {
     const { controller, timers } = createTestController();
     runFullExperiment(controller, timers);
+    await flushPendingCognitiveProcessing(controller);
 
     const session = controller.getSession();
     const subtraction3 = session.phases.find((p) => p.phaseId === 'SUBTRACTION_3');
@@ -180,6 +221,7 @@ test('cognitive results are recorded onto the correct phase record in session da
     assert.equal(subtraction3.cognitivePerformance.correctResponses, 3);
     assert.equal(subtraction3.cognitivePerformance.cognitiveAccuracy, 100);
     assert.equal(subtraction3.cognitivePerformance.rawTranscript, '944 941 938');
+    assert.equal(subtraction3.cognitiveProcessing.status, 'ready');
 
     // Non-cognitive phases must not have cognitive data.
     const motor = session.phases.find((p) => p.phaseId === 'MOTOR_BASELINE');
@@ -188,60 +230,83 @@ test('cognitive results are recorded onto the correct phase record in session da
     assert.equal(recovery.cognitivePerformance, null);
 });
 
-test('dual-task: the mouse task and the speech session both run for DUAL_TASK_3, independently', () => {
+test('a failed recording pipeline is recorded as its own status, never fabricating cognitivePerformance', async () => {
+    const timers = createControllableTimerFactory();
+    const factory = ({ subtractionValue, startingNumber }) => ({
+        subtractionValue, startingNumber, micActive: false,
+        start() { this.micActive = true; },
+        async stop() { this.micActive = false; return { status: 'failed', error: 'network error' }; },
+        isMicActive() { return this.micActive; }
+    });
+    const controller = new ExperimentController({
+        config: experimentConfig, timerFactory: timers.factory, mouseTaskAdapter: fakeMouseTaskAdapter,
+        cognitiveAudioSessionFactory: factory, logger: () => {}
+    });
+
+    runFullExperiment(controller, timers);
+    await flushPendingCognitiveProcessing(controller);
+
+    const subtraction3 = controller.getSession().phases.find((p) => p.phaseId === 'SUBTRACTION_3');
+    assert.equal(subtraction3.cognitivePerformance, null);
+    assert.equal(subtraction3.cognitiveProcessing.status, 'failed');
+    assert.equal(subtraction3.cognitiveProcessing.error, 'network error');
+});
+
+test('dual-task: the mouse task and the audio-recording session both run for DUAL_TASK_3, independently', () => {
     const mouseStartCalls = [];
     const spyMouseAdapter = {
         start(phaseDescriptor) { mouseStartCalls.push(phaseDescriptor.phaseId); },
         stop() {}
     };
-    const { controller, timers, cognitiveSpeechSessionFactory } = createTestController({ mouseTaskAdapter: spyMouseAdapter });
+    const { controller, timers, cognitiveAudioSessionFactory } = createTestController({ mouseTaskAdapter: spyMouseAdapter });
 
     controller.start();
     controller.advance(); // PREPARE_MOTOR_BASELINE
-    timers.complete(); // MOTOR_BASELINE
-    timers.complete(); // RECOVERY_AFTER_MOTOR
-    timers.complete(); // PREPARE_SUBTRACTION_3
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     timers.complete(); // PREPARE_DUAL_TASK_3
 
     timers.complete(); // -> DUAL_TASK_3
     assert.equal(controller.getCurrentPhaseId(), 'DUAL_TASK_3');
     assert.ok(mouseStartCalls.includes('DUAL_TASK_3'), 'mouse task must have started for the dual-task phase');
-    const session = controller.getCurrentCognitiveSpeechSession();
-    assert.ok(session, 'speech session must also be running for the same dual-task phase');
+    const session = controller.getCurrentCognitiveAudioSession();
+    assert.ok(session, 'audio-recording session must also be running for the same dual-task phase');
     assert.equal(session.isMicActive(), true);
     assert.equal(session.subtractionValue, 3);
 
     // Reporting mouse performance must not touch or clear the concurrently
-    // running speech session, and vice versa - each system is independent.
+    // running audio session, and vice versa - each system is independent.
     controller.reportMousePerformance({ totalTargets: 10, totalClicks: 12, totalHits: 9 });
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), session, 'speech session is unaffected by mouse reporting');
+    assert.equal(controller.getCurrentCognitiveAudioSession(), session, 'audio session is unaffected by mouse reporting');
     assert.equal(session.stopped, false);
 
     timers.complete(); // -> RECOVERY_AFTER_DUAL_3
-    const finishedSession = cognitiveSpeechSessionFactory.sessions.find((s) => s.subtractionValue === 3 && s.startingNumber === session.startingNumber);
+    const finishedSession = cognitiveAudioSessionFactory.sessions.find((s) => s.subtractionValue === 3 && s.startingNumber === session.startingNumber);
     assert.equal(finishedSession.stopped, true);
 
     const dualTaskRecord = controller.getSession().phases.find((p) => p.phaseId === 'DUAL_TASK_3');
     assert.ok(dualTaskRecord.mousePerformance, 'mouse results recorded');
-    assert.ok(dualTaskRecord.cognitivePerformance, 'cognitive results also recorded, independently');
-    assert.notDeepEqual(dualTaskRecord.mousePerformance, dualTaskRecord.cognitivePerformance);
+    assert.equal(dualTaskRecord.cognitiveProcessing.status, 'pending', 'cognitive results are still processing independently of the (already-recorded) mouse results');
 });
 
 test('the microphone remains inactive throughout recovery and preparation surrounding a dual-task condition', () => {
     const { controller, timers } = createTestController();
     controller.start();
     controller.advance(); // PREPARE_MOTOR_BASELINE
-    timers.complete(); // MOTOR_BASELINE
-    timers.complete(); // RECOVERY_AFTER_MOTOR
-    timers.complete(); // PREPARE_SUBTRACTION_3
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     timers.complete(); // PREPARE_DUAL_TASK_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_DUAL_TASK_3');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null, 'microphone inactive during preparation before dual-task');
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone inactive during preparation before dual-task');
 
     timers.complete(); // DUAL_TASK_3
     timers.complete(); // -> RECOVERY_AFTER_DUAL_3
     assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_DUAL_3');
-    assert.equal(controller.getCurrentCognitiveSpeechSession(), null, 'microphone inactive during recovery after dual-task');
+    assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone inactive during recovery after dual-task');
 });

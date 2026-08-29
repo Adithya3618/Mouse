@@ -65,7 +65,7 @@ body.experiment-active {
 }
 
 .task-title {
-  font-size: 34px;
+  font-size: 42px;
   line-height: 1.15;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -74,7 +74,7 @@ body.experiment-active {
 }
 
 .task-instruction {
-  font-size: 17px;
+  font-size: 21px;
   line-height: 1.55;
   color: var(--ink);
   max-width: 720px;
@@ -143,6 +143,49 @@ body.experiment-active {
   background: var(--accent);
 }
 
+/* --- Recovery "Proceed" button: hidden the whole countdown, shown only
+   once the recovery timer reaches zero (see experimentController.js and
+   experimentScreen.js) - same visual weight as the results screen's
+   .download-button, since both are the one deliberate, explicit action a
+   screen is waiting on. --- */
+.proceed-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 28px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 16px 32px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background .15s ease, transform .1s ease;
+}
+
+.proceed-button:hover {
+  background: #0F5F54;
+}
+
+.proceed-button:active {
+  transform: translateY(1px);
+}
+
+.proceed-button:disabled {
+  background: #C7CDCB;
+  cursor: not-allowed;
+}
+
+.proceed-button .arrow {
+  transition: transform .15s ease;
+}
+
+.proceed-button:hover .arrow {
+  transform: translateX(3px);
+}
+
 /* --- Pre-task countdown: one reusable "get ready / 3 / 2 / 1 / begin"
    block, shown before every one of the 7 active tasks. --- */
 .prep-countdown {
@@ -169,17 +212,20 @@ body.experiment-active {
   line-height: 1;
 }
 
-/* --- Dual-task: visually elevated (both tasks running at once) --- */
-#screen-experiment[data-phase-type="dual-task"] .task-title {
-  color: var(--accent);
-}
-
+/* --- Dual-task: visually elevated (both tasks running at once) via the
+   left accent bar only - the heading itself stays the same black/--ink as
+   every other task screen for consistent, readable typography. --- */
 #screen-experiment[data-phase-type="dual-task"] .task-panel {
   border-left: 4px solid var(--accent);
   padding-left: 20px;
 }
 
-/* --- Recovery: deliberately calm and visually distinct from active tasks --- */
+/* --- Recovery: deliberately calm and visually distinct from active tasks -
+   centered, since there is no task/target field to left-align against. --- */
+#screen-experiment[data-phase-type="recovery"] .task-panel {
+  text-align: center;
+}
+
 #screen-experiment[data-phase-type="recovery"] .task-title {
   color: var(--slate);
   font-weight: 600;
@@ -187,6 +233,8 @@ body.experiment-active {
 
 #screen-experiment[data-phase-type="recovery"] .task-instruction {
   color: var(--slate);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 #screen-experiment[data-phase-type="recovery"] .timer-badge-value {
@@ -353,7 +401,7 @@ body.experiment-active {
    the positioning fix entirely. --- */
 #gameScreen {
   margin-top: 8px;
-  height: 460px;
+  height: 640px;
   border-radius: 6px;
   border-color: var(--line);
   background: var(--panel);
@@ -411,13 +459,13 @@ body.experiment-active {
     text-align: left;
   }
   .task-title {
-    font-size: 26px;
+    font-size: 30px;
   }
   .prep-countdown-value {
     font-size: 64px;
   }
   #gameScreen {
-    height: 320px;
+    height: 420px;
   }
   .starting-numbers-list {
     grid-template-columns: 1fr;

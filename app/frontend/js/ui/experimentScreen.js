@@ -16,7 +16,7 @@ import { getPhaseDisplay } from './phaseCopy.js';
 import { formatTime } from '../timer/timer.js';
 import { show, hide } from './transition.js';
 import { renderResults } from './resultsScreen.js';
-import { initSpeechTranscriptPanel } from './speechTranscriptPanel.js';
+import { initRecordingPanel } from './recordingPanel.js';
 
 const PREPARATION_PHASE_TYPE = 'preparation';
 const COMPLETE_PHASE_ID = 'COMPLETE';
@@ -31,7 +31,7 @@ const PILL_ELIGIBLE_PHASE_TYPES = new Set(['motor', 'cognitive', 'dual-task']);
 export function initExperimentScreen() {
     const controller = getExperimentController();
 
-    initSpeechTranscriptPanel(controller);
+    initRecordingPanel(controller);
 
     const screenExperiment = document.getElementById('screen-experiment');
     const screenInstructions = document.getElementById('screen-instructions');
@@ -55,6 +55,7 @@ export function initExperimentScreen() {
     const countPill = document.getElementById('countPill');
     const clickPill = document.getElementById('clickPill');
     const canvasCaption = document.getElementById('canvasCaption');
+    const recoveryProceedBtn = document.getElementById('recoveryProceedBtn');
 
     controller.onPhaseChange((phase) => {
         if (!phase || phase.phaseId === INSTRUCTIONS_PHASE_ID) {
@@ -74,6 +75,31 @@ export function initExperimentScreen() {
         renderTaskScreen(phase, controller.getCurrentPhaseRecord());
     });
 
+    // Fires only when a recovery phase's timer reaches zero (see
+    // experimentController.js#onRecoveryReady) - never a real phase change,
+    // so this only ever needs to reveal the button, not re-render anything
+    // else (which would otherwise reset the just-finished countdown display
+    // back to its starting value).
+    controller.onRecoveryReady((phase) => {
+        if (!phase || phase.phaseType !== 'recovery') {
+            return;
+        }
+        recoveryProceedBtn.hidden = false;
+        recoveryProceedBtn.disabled = false;
+    });
+
+    recoveryProceedBtn.addEventListener('click', () => {
+        // Disable/hide immediately, before the controller call even
+        // returns - this is the UI-side half of the "advance exactly
+        // once" guarantee (experimentController.js#proceedFromRecovery is
+        // the other half, via its own _recoveryReadyToProceed flag). A
+        // second click on an already-hidden, already-disabled button
+        // cannot dispatch another click event at all.
+        recoveryProceedBtn.disabled = true;
+        recoveryProceedBtn.hidden = true;
+        controller.proceedFromRecovery();
+    });
+
     controller.onPhaseTick((remainingSeconds, phase) => {
         if (!phase) {
             return;
@@ -88,6 +114,15 @@ export function initExperimentScreen() {
     function renderTaskScreen(phase, phaseRecord) {
         completePanel.hidden = true;
         taskPanel.hidden = false;
+
+        // Reset on every real phase change, including into a fresh
+        // recovery phase - the button only ever reappears via
+        // onRecoveryReady above, once THIS phase's timer has actually
+        // finished (matches controller.js resetting
+        // _recoveryReadyToProceed to false at the very top of every
+        // _enterPhase() call).
+        recoveryProceedBtn.hidden = true;
+        recoveryProceedBtn.disabled = true;
 
         const display = getPhaseDisplay(phase, phaseRecord);
 
@@ -136,7 +171,7 @@ export function initExperimentScreen() {
         pillRow.hidden = true;
         canvasCaption.hidden = true;
         completePanel.hidden = false;
-        renderResults(controller.getSession());
+        renderResults(controller.getSession(), controller);
     }
 }
 

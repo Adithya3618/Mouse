@@ -85,7 +85,10 @@ function createTestController(overrides = {}) {
 
 // Advances the controller all the way to COMPLETE, calling timers.complete()
 // for every timed phase and controller.advance() for INSTRUCTIONS (the only
-// untimed phase before COMPLETE).
+// untimed phase before COMPLETE). Recovery phases need one extra explicit
+// step now: their timer completing no longer auto-advances (see
+// experimentController.js#proceedFromRecovery) - it only makes the
+// controller ready to, exactly like a real "Proceed" button click would.
 function runFullExperiment(controller, timers) {
     controller.start();
     while (controller.getCurrentPhaseId() !== 'COMPLETE') {
@@ -94,6 +97,9 @@ function runFullExperiment(controller, timers) {
             controller.advance();
         } else {
             timers.complete();
+            if (phase.phaseType === 'recovery') {
+                controller.proceedFromRecovery();
+            }
         }
     }
 }
@@ -157,9 +163,10 @@ test('4. Subtraction 3 is created correctly, and is preceded by its own preparat
     const { controller, timers } = createTestController();
     controller.start();
     controller.advance(); // PREPARE_MOTOR_BASELINE
-    timers.complete(); // MOTOR_BASELINE
-    timers.complete(); // RECOVERY_AFTER_MOTOR
-    timers.complete(); // -> PREPARE_SUBTRACTION_3
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes - not yet advanced
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
     assert.equal(controller.getCurrentPhase().precedesPhaseType, 'cognitive');
 
@@ -175,9 +182,10 @@ test('5, 6, 7. Each subtraction condition gets a number in range, and each diffe
     const { controller, timers } = createTestController();
     controller.start();
     controller.advance(); // PREPARE_MOTOR_BASELINE
-    timers.complete(); // MOTOR_BASELINE
-    timers.complete(); // RECOVERY_AFTER_MOTOR
-    timers.complete(); // PREPARE_SUBTRACTION_3
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     const session = controller.getSession();
 
@@ -190,16 +198,18 @@ test('5, 6, 7. Each subtraction condition gets a number in range, and each diffe
 
     timers.complete(); // PREPARE_DUAL_TASK_3
     timers.complete(); // DUAL_TASK_3
-    timers.complete(); // RECOVERY_AFTER_DUAL_3
-    timers.complete(); // PREPARE_SUBTRACTION_7
+    timers.complete(); // -> RECOVERY_AFTER_DUAL_3 (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_DUAL_3's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_7
     timers.complete(); // SUBTRACTION_7
     assert.ok(inRange(numberFor(7)));
     assert.notEqual(numberFor(7), numberFor(3));
 
     timers.complete(); // PREPARE_DUAL_TASK_7
     timers.complete(); // DUAL_TASK_7
-    timers.complete(); // RECOVERY_AFTER_DUAL_7
-    timers.complete(); // PREPARE_SUBTRACTION_17
+    timers.complete(); // -> RECOVERY_AFTER_DUAL_7 (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_DUAL_7's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_17
     timers.complete(); // SUBTRACTION_17
     assert.ok(inRange(numberFor(17)));
     assert.notEqual(numberFor(17), numberFor(7));
@@ -309,20 +319,23 @@ test('15. Mouse data is stored separately per mouse-containing condition, not co
     controller.advance(); // PREPARE_MOTOR_BASELINE
     timers.complete(); // -> MOTOR_BASELINE
     controller.reportMousePerformance({ totalTargets: 40, totalClicks: 50, totalHits: 35 });
-    timers.complete(); // -> RECOVERY_AFTER_MOTOR
-    timers.complete(); // -> PREPARE_SUBTRACTION_3
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // -> SUBTRACTION_3
     timers.complete(); // -> PREPARE_DUAL_TASK_3
     timers.complete(); // -> DUAL_TASK_3
     controller.reportMousePerformance({ totalTargets: 20, totalClicks: 30, totalHits: 18 });
-    timers.complete(); // -> RECOVERY_AFTER_DUAL_3
-    timers.complete(); // -> PREPARE_SUBTRACTION_7
+    timers.complete(); // -> RECOVERY_AFTER_DUAL_3 (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_DUAL_3's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_7
     timers.complete(); // -> SUBTRACTION_7
     timers.complete(); // -> PREPARE_DUAL_TASK_7
     timers.complete(); // -> DUAL_TASK_7
     controller.reportMousePerformance({ totalTargets: 22, totalClicks: 28, totalHits: 15 });
-    timers.complete(); // -> RECOVERY_AFTER_DUAL_7
-    timers.complete(); // -> PREPARE_SUBTRACTION_17
+    timers.complete(); // -> RECOVERY_AFTER_DUAL_7 (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_DUAL_7's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_17
     timers.complete(); // -> SUBTRACTION_17
     timers.complete(); // -> PREPARE_DUAL_TASK_17
     timers.complete(); // -> DUAL_TASK_17
@@ -430,9 +443,13 @@ test('this holds for every one of the 7 active tasks, not just motor baseline', 
         assert.equal(timers.durations.at(-1), taskDuration, `${task}'s timer must be its own full duration`);
 
         timers.complete(); // advance past the task to whatever comes next
-        // Skip any recovery phase to get back to the next preparation phase.
+        // Skip any recovery phase to get back to the next preparation phase -
+        // its timer completing only makes it ready to proceed, so an
+        // explicit proceedFromRecovery() (the "Proceed" button click) is
+        // what actually moves past it.
         while (controller.getCurrentPhase() && controller.getCurrentPhase().phaseType === 'recovery') {
             timers.complete();
+            controller.proceedFromRecovery();
         }
     }
 
@@ -461,9 +478,10 @@ test('cognitive task timing does not start during preparation - only once the ac
     const { controller, timers } = createTestController();
     controller.start();
     controller.advance(); // PREPARE_MOTOR_BASELINE
-    timers.complete(); // MOTOR_BASELINE
-    timers.complete(); // RECOVERY_AFTER_MOTOR
-    timers.complete(); // -> PREPARE_SUBTRACTION_3
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
 
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
     assert.equal(controller.getCurrentSubtractionTask(), null, 'cognitive timing must not be running during preparation');
@@ -620,8 +638,9 @@ test('getCurrentPhaseRecord() returns the session record for whatever phase is c
     timers.complete(); // -> MOTOR_BASELINE
     assert.equal(controller.getCurrentPhaseRecord().startingNumber, null);
 
-    timers.complete(); // -> RECOVERY_AFTER_MOTOR
-    timers.complete(); // -> PREPARE_SUBTRACTION_3
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // -> SUBTRACTION_3
     const record = controller.getCurrentPhaseRecord();
     assert.equal(record.phaseId, 'SUBTRACTION_3');
@@ -690,4 +709,106 @@ test('mouse task results still land on the correct phase record even if the mous
         .phases.find((p) => p.phaseId === 'MOTOR_BASELINE');
     assert.ok(motorBaselineRecord.mousePerformance, 'results should still land on MOTOR_BASELINE, not be lost or misattributed');
     assert.equal(motorBaselineRecord.mousePerformance.totalHits, 5);
+});
+
+// --- Recovery "Proceed" button gating (recovery phases require an explicit
+// proceedFromRecovery() call - see experimentController.js#proceedFromRecovery) ---
+
+function advanceToRecovery(controller, timers) {
+    controller.start();
+    controller.advance(); // -> PREPARE_MOTOR_BASELINE
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
+}
+
+test('a recovery phase\'s timer completing does not call advance() - the phase stays current until proceedFromRecovery()', () => {
+    const { controller, timers } = createTestController();
+    advanceToRecovery(controller, timers);
+
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_MOTOR', 'must not have auto-advanced');
+});
+
+test('isRecoveryReadyToProceed() is false while a recovery phase\'s timer is running, and becomes true only once it completes', () => {
+    const { controller, timers } = createTestController();
+    advanceToRecovery(controller, timers);
+
+    assert.equal(controller.isRecoveryReadyToProceed(), false, 'must be false while the countdown is still running');
+
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    assert.equal(controller.isRecoveryReadyToProceed(), true, 'must become true the instant the countdown reaches zero');
+});
+
+test('isRecoveryReadyToProceed() is false for every non-recovery phase, even ones with a timer', () => {
+    const { controller, timers } = createTestController();
+    controller.start();
+    controller.advance(); // -> PREPARE_MOTOR_BASELINE
+    assert.equal(controller.isRecoveryReadyToProceed(), false);
+
+    timers.complete(); // -> MOTOR_BASELINE
+    assert.equal(controller.isRecoveryReadyToProceed(), false, 'MOTOR_BASELINE is a timed phase but not a recovery phase');
+});
+
+test('proceedFromRecovery() before the timer has completed is a no-op: it returns false and does not advance', () => {
+    const { controller, timers } = createTestController();
+    advanceToRecovery(controller, timers);
+
+    const result = controller.proceedFromRecovery();
+    assert.equal(result, false);
+    assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_MOTOR', 'must not have advanced');
+});
+
+test('proceedFromRecovery() advances exactly once, even if called twice in a row (guards against a duplicate click/call)', () => {
+    const { controller, timers } = createTestController();
+    advanceToRecovery(controller, timers);
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+
+    const firstResult = controller.proceedFromRecovery();
+    assert.equal(firstResult, true);
+    assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
+
+    const secondResult = controller.proceedFromRecovery();
+    assert.equal(secondResult, false, 'a second call must be a no-op');
+    assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3', 'must still be exactly one phase past recovery, not two');
+});
+
+test('onRecoveryReady fires exactly once per recovery phase, only once its timer completes', () => {
+    const { controller, timers } = createTestController();
+    const readyPhaseIds = [];
+    controller.onRecoveryReady((phase) => readyPhaseIds.push(phase.phaseId));
+    advanceToRecovery(controller, timers);
+
+    assert.deepEqual(readyPhaseIds, [], 'must not fire while the countdown is still running');
+
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+    assert.deepEqual(readyPhaseIds, ['RECOVERY_AFTER_MOTOR']);
+
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    assert.deepEqual(readyPhaseIds, ['RECOVERY_AFTER_MOTOR'], 'must not fire again for the following, non-recovery phase');
+});
+
+test('onRecoveryReady never fires for a non-recovery timed phase', () => {
+    const { controller, timers } = createTestController();
+    const readyPhaseIds = [];
+    controller.onRecoveryReady((phase) => readyPhaseIds.push(phase.phaseId));
+
+    controller.start();
+    controller.advance(); // -> PREPARE_MOTOR_BASELINE
+    timers.complete(); // -> MOTOR_BASELINE
+    timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered)
+
+    assert.deepEqual(readyPhaseIds, [], 'MOTOR_BASELINE\'s own timer completing must never trigger onRecoveryReady');
+});
+
+test('onRecoveryReady returns a working unsubscribe function', () => {
+    const { controller, timers } = createTestController();
+    const readyPhaseIds = [];
+    const unsubscribe = controller.onRecoveryReady((phase) => readyPhaseIds.push(phase.phaseId));
+    advanceToRecovery(controller, timers);
+
+    unsubscribe();
+    timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
+
+    assert.deepEqual(readyPhaseIds, [], 'listener must not fire after unsubscribing');
+    assert.equal(controller.isRecoveryReadyToProceed(), true, 'the ready state itself is independent of any particular listener');
 });

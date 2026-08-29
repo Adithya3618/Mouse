@@ -43,12 +43,44 @@ export function initResultsScreen() {
 }
 
 // Called once, when the COMPLETE phase renders - session is the actual,
-// just-finished ExperimentController session, not test/mock data.
-export function renderResults(session) {
+// just-finished ExperimentController session, not test/mock data. `controller`
+// is needed to await any still-in-flight recording uploads/transcription/
+// scoring (see experiment/experimentController.js#getPendingCognitiveProcessing) -
+// mouse results render immediately (never delayed by this), while the
+// cognitive table/export stay gated behind a simple "Processing your
+// recording(s)…" status, per the "processing is a backend process, not
+// something the participant watches happen" rule. This NEVER shows the
+// participant a raw transcript - only whether processing is still running.
+export async function renderResults(session, controller) {
     renderMousePerformanceTable(session);
-    renderCognitivePerformanceTable(session);
     renderStartingNumbers(session);
     setExportStatus('', false);
+
+    const downloadBtn = document.getElementById('downloadResultsBtn');
+    const processingStatus = document.getElementById('cognitiveProcessingStatus');
+    const pending = controller && controller.getPendingCognitiveProcessing ? controller.getPendingCognitiveProcessing() : [];
+
+    if (pending.length > 0) {
+        if (processingStatus) {
+            processingStatus.hidden = false;
+        }
+        if (downloadBtn) {
+            downloadBtn.disabled = true;
+        }
+        // allSettled, not all() - one phase's recording failing to process
+        // must never prevent the others' (already-succeeded) results from
+        // being shown; see recordCognitiveProcessingFailed() in
+        // data/sessionData.js for how a failure is represented per-phase.
+        await Promise.allSettled(pending);
+    }
+
+    if (processingStatus) {
+        processingStatus.hidden = true;
+    }
+    if (downloadBtn) {
+        downloadBtn.disabled = false;
+    }
+    renderCognitivePerformanceTable(session);
 }
 
 function renderCognitivePerformanceTable(session) {
@@ -58,15 +90,24 @@ function renderCognitivePerformanceTable(session) {
     for (const phaseId of COGNITIVE_CONDITION_ORDER) {
         const phase = session.phases.find((p) => p.phaseId === phaseId);
         const cognitive = phase ? phase.cognitivePerformance : null;
+        const processingFailed = phase && phase.cognitiveProcessing && phase.cognitiveProcessing.status === 'failed';
 
         const row = document.createElement('tr');
         row.appendChild(createCell(COGNITIVE_CONDITION_LABELS[phaseId]));
         row.appendChild(createCell(phase && phase.startingNumber != null ? String(phase.startingNumber) : '—'));
-        row.appendChild(createCell(cognitive ? String(cognitive.numberOfResponses) : '—'));
-        row.appendChild(createCell(cognitive ? String(cognitive.correctResponses) : '—'));
-        row.appendChild(createCell(cognitive ? String(cognitive.incorrectResponses) : '—'));
-        row.appendChild(createCell(cognitive ? String(cognitive.unresolvedResponses) : '—'));
-        row.appendChild(createCell(cognitive ? formatPercentage(cognitive.cognitiveAccuracy) : '—'));
+        if (processingFailed) {
+            row.appendChild(createCell('Unavailable'));
+            row.appendChild(createCell('Unavailable'));
+            row.appendChild(createCell('Unavailable'));
+            row.appendChild(createCell('Unavailable'));
+            row.appendChild(createCell('Unavailable'));
+        } else {
+            row.appendChild(createCell(cognitive ? String(cognitive.numberOfResponses) : '—'));
+            row.appendChild(createCell(cognitive ? String(cognitive.correctResponses) : '—'));
+            row.appendChild(createCell(cognitive ? String(cognitive.incorrectResponses) : '—'));
+            row.appendChild(createCell(cognitive ? String(cognitive.unresolvedResponses) : '—'));
+            row.appendChild(createCell(cognitive ? formatPercentage(cognitive.cognitiveAccuracy) : '—'));
+        }
         tbody.appendChild(row);
     }
 }

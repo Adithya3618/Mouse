@@ -5,10 +5,13 @@ __MACOSX/
 
 .env
 .env.*
+!.env.example
 
 data/exports/
 data/raw/
 data/processed/
+data/audio/
+data/db/
 
 *.xlsx
 *.log

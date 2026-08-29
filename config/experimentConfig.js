@@ -58,21 +58,13 @@ export const experimentConfig = {
 
     // Every participant response in this protocol is expected to be
     // exactly this many digits (the starting number is always drawn from
-    // randomStartingNumberRange above, which is 3-digit). Used only as a
-    // speech-recognition SEGMENTATION signal - deciding whether a
-    // recognized fragment like "8" is likely incomplete and should wait
-    // for a continuation - never to alter, guess, or "correct" a
-    // recognized value. See cognitive/cognitiveSpeechSession.js.
-    expectedResponseDigits: 3,
-
-    // Passed through to the browser's SpeechRecognition/
-    // webkitSpeechRecognition engine as its recognition language/locale.
-    // Participants may have different English accents; this is the only
-    // lever the browser-native API offers for that (see
-    // cognitive/speechRecognition.js) - it does not guarantee accurate
-    // recognition across accents, and no AI-based accent detection is
-    // used to choose or adjust it automatically.
-    speechRecognitionLanguage: 'en-US'
+    // randomStartingNumberRange above, which is 3-digit). Threaded through
+    // to the backend transcription/parsing pipeline (see
+    // app/backend/services/speechProcessingService.js and
+    // cognitive/numberParser.js) as the target length for reconstructing a
+    // number from spoken fragments - never to alter, guess, or "correct" a
+    // recognized value.
+    expectedResponseDigits: 3
 };
 
 export default experimentConfig;

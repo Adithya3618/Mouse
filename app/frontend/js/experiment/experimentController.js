@@ -22,13 +22,15 @@ import { buildPhaseSequence, PhaseId } from './phases.js';
 import { Timer } from '../timer/timer.js';
 import { generateStartingNumber } from '../cognitive/randomNumber.js';
 import { SubtractionTask } from '../cognitive/subtractionTask.js';
-import { CognitiveSpeechSession } from '../cognitive/cognitiveSpeechSession.js';
+import { CognitiveAudioSession } from '../cognitive/cognitiveAudioSession.js';
 import {
     createSession,
     startPhaseRecord,
     endPhaseRecord,
     recordMousePerformance,
+    recordCognitiveProcessingPending,
     recordCognitivePerformance,
+    recordCognitiveProcessingFailed,
     endSession
 } from '../data/sessionData.js';
 
@@ -87,7 +89,11 @@ const defaultMouseTaskAdapter = {
                 bgColor: mouseTaskConfig.backgroundColor,
                 targetColor: mouseTaskConfig.targetColor,
                 targetSize: mouseTaskConfig.targetSizePx,
-                difficultyLevel: mouseTaskConfig.defaultDifficulty,
+                // No targetSpawnIntervalMs override here - the task always
+                // uses mouse/mouseTask.js's TARGET_SPAWN_INTERVAL_MS
+                // default. (difficultyLevel used to be threaded through
+                // here for the same purpose; mouseTaskConfig.defaultDifficulty
+                // is no longer read by the live spawn timer.)
                 durationMs: phaseDescriptor.duration * 1000
             },
             onComplete
@@ -109,7 +115,7 @@ export class ExperimentController {
         timerFactory = (callbacks) => new Timer(callbacks),
         mouseTaskAdapter = defaultMouseTaskAdapter,
         randomNumberGenerator = generateStartingNumber,
-        cognitiveSpeechSessionFactory = (options) => new CognitiveSpeechSession(options),
+        cognitiveAudioSessionFactory = (options) => new CognitiveAudioSession(options),
         logger = defaultLogger,
         participantId = null
     } = {}) {
@@ -121,7 +127,7 @@ export class ExperimentController {
         this._timerFactory = timerFactory;
         this._mouseTaskAdapter = mouseTaskAdapter;
         this._randomNumberGenerator = randomNumberGenerator;
-        this._cognitiveSpeechSessionFactory = cognitiveSpeechSessionFactory;
+        this._cognitiveAudioSessionFactory = cognitiveAudioSessionFactory;
         this._logger = logger;
         this._participantId = participantId;
 
@@ -132,12 +138,29 @@ export class ExperimentController {
         this._currentPhaseRecord = null;
         this._currentTimer = null;
         this._currentSubtractionTask = null;
-        this._currentCognitiveSpeechSession = null;
+        this._currentCognitiveAudioSession = null;
         this._lastStartingNumber = null;
         this._conditionStartingNumbers = {};
 
+        // Every in-flight recording upload/transcription/scoring promise
+        // for this session, in phase order - NEVER awaited here (that would
+        // block phase timing). ui/resultsScreen.js awaits all of these
+        // before showing final cognitive results/enabling export - see
+        // getPendingCognitiveProcessing().
+        this._pendingCognitiveProcessing = [];
+
+        // True only while the CURRENT phase is a recovery phase whose timer
+        // has already reached zero, but the participant has not yet clicked
+        // Proceed (see advance()'s docstring on why recovery is the one
+        // phaseType that no longer auto-advances on its own timer). Reset
+        // to false on every _enterPhase() - including the recovery phase's
+        // own entry, before its timer even starts - so it can only ever be
+        // true after that specific phase's timer has genuinely finished.
+        this._recoveryReadyToProceed = false;
+
         this._phaseChangeListeners = new Set();
         this._phaseTickListeners = new Set();
+        this._recoveryReadyListeners = new Set();
     }
 
     // --- subscriptions -------------------------------------------------
@@ -156,6 +179,26 @@ export class ExperimentController {
     onPhaseTick(listener) {
         this._phaseTickListeners.add(listener);
         return () => this._phaseTickListeners.delete(listener);
+    }
+
+    // Fires exactly once per recovery phase, the moment its timer reaches
+    // zero (never for any other phaseType). This is deliberately a
+    // separate notification from onPhaseChange - the phase itself has NOT
+    // changed at this point (the participant is still looking at the same
+    // recovery screen, just now with a Proceed button available), so
+    // re-firing onPhaseChange here would cause every phase-change listener
+    // (timer badge, prep countdown, etc.) to needlessly re-render as if a
+    // new phase had started, resetting the visible countdown display back
+    // to its starting value instead of showing 00:00.
+    onRecoveryReady(listener) {
+        this._recoveryReadyListeners.add(listener);
+        return () => this._recoveryReadyListeners.delete(listener);
+    }
+
+    _notifyRecoveryReady() {
+        for (const listener of this._recoveryReadyListeners) {
+            listener(this.getCurrentPhase(), this);
+        }
     }
 
     _notifyPhaseChange() {
@@ -183,6 +226,7 @@ export class ExperimentController {
         this._fsm.reset();
         this._lastStartingNumber = null;
         this._conditionStartingNumbers = {};
+        this._pendingCognitiveProcessing = [];
         this._logger(`Experiment initialized (session ${this._session.sessionId})`);
         return this._session;
     }
@@ -199,7 +243,12 @@ export class ExperimentController {
     // Moves from the current phase to the next one. Timed phases call this
     // automatically when their Timer completes; untimed phases
     // (INSTRUCTIONS) must have this called explicitly once the UI decides
-    // the participant is ready to proceed.
+    // the participant is ready to proceed. Recovery phases (phaseType
+    // 'recovery') are a third case: they DO have a real countdown timer
+    // (unchanged - see _enterPhase below) that runs for its full
+    // configured duration, but reaching zero does not call advance()
+    // automatically - see proceedFromRecovery(), which is the only thing
+    // that does, and only once the timer has actually finished.
     advance() {
         const finishedPhase = this._fsm.current();
         if (!finishedPhase) {
@@ -231,6 +280,7 @@ export class ExperimentController {
 
     _enterPhase(phaseDescriptor) {
         const extra = {};
+        this._recoveryReadyToProceed = false;
 
         // The starting number is generated as soon as the subtraction
         // value is known - including during PREPARE_SUBTRACTION_<n>/
@@ -252,23 +302,30 @@ export class ExperimentController {
             this._currentSubtractionTask.start();
 
             // Independent of SubtractionTask above (which only tracks
-            // timing) - the microphone/live-transcript system. Started and
-            // stopped on exactly the same cognitiveActive gate, so speech
-            // recognition is active only during SUBTRACTION_<n>/
-            // DUAL_TASK_<n> and never during preparation, recovery,
-            // instructions, the motor-only baseline, or COMPLETE.
-            this._currentCognitiveSpeechSession = this._cognitiveSpeechSessionFactory({
+            // timing) - full-phase audio recording (see
+            // cognitive/cognitiveAudioSession.js). Started and stopped on
+            // exactly the same cognitiveActive gate, so the microphone is
+            // active only during SUBTRACTION_<n>/DUAL_TASK_<n> and never
+            // during preparation, recovery, instructions, the motor-only
+            // baseline, or COMPLETE.
+            this._currentCognitiveAudioSession = this._cognitiveAudioSessionFactory({
                 subtractionValue: phaseDescriptor.subtractionValue,
                 startingNumber: extra.startingNumber,
                 scoringMode: this._config.cognitiveScoringMode,
                 expectedResponseDigits: this._config.expectedResponseDigits,
-                speechRecognitionLanguage: this._config.speechRecognitionLanguage,
+                participantCode: this._session.participantCode,
+                sessionId: this._session.sessionId,
+                experimentId: this._session.experimentId,
+                sessionDate: this._session.sessionDate,
+                phaseId: phaseDescriptor.phaseId,
+                phaseType: phaseDescriptor.phaseType,
+                duration: phaseDescriptor.duration,
                 logger: this._logger
             });
-            this._currentCognitiveSpeechSession.start();
+            this._currentCognitiveAudioSession.start();
         } else {
             this._currentSubtractionTask = null;
-            this._currentCognitiveSpeechSession = null;
+            this._currentCognitiveAudioSession = null;
         }
 
         this._currentPhaseRecord = startPhaseRecord(this._session, phaseDescriptor, extra);
@@ -305,8 +362,22 @@ export class ExperimentController {
         }
 
         if (phaseDescriptor.duration != null) {
+            const isRecovery = phaseDescriptor.phaseType === 'recovery';
             this._currentTimer = this._timerFactory({
-                onComplete: () => this.advance(),
+                // Recovery: the countdown itself is completely unchanged
+                // (same duration, same per-second ticks via onTick below) -
+                // only what happens the instant it reaches zero differs.
+                // Every other timed phase keeps the original
+                // "timer ends -> advance immediately" behavior.
+                onComplete: () => {
+                    if (isRecovery) {
+                        this._recoveryReadyToProceed = true;
+                        this._currentTimer = null;
+                        this._notifyRecoveryReady();
+                    } else {
+                        this.advance();
+                    }
+                },
                 onTick: (remainingSeconds) => this._notifyPhaseTick(remainingSeconds)
             });
             this._currentTimer.start(phaseDescriptor.duration);
@@ -314,6 +385,32 @@ export class ExperimentController {
         } else {
             this._currentTimer = null;
         }
+    }
+
+    // The only thing that may advance past a recovery phase - called by the
+    // UI when the participant clicks "Proceed", and ONLY takes effect if
+    // this recovery phase's timer has genuinely already reached zero
+    // (isRecoveryReadyToProceed() below is what the UI gates the button's
+    // very existence on, so this guard is a second, independent line of
+    // defense, not the only one). Clears the ready flag BEFORE calling
+    // advance(), so a duplicate/double-click (or two rapid calls for any
+    // other reason) can only ever advance once - the second call sees the
+    // flag already false and is a no-op.
+    proceedFromRecovery() {
+        if (!this._recoveryReadyToProceed) {
+            return false;
+        }
+        this._recoveryReadyToProceed = false;
+        this.advance();
+        return true;
+    }
+
+    // Whether the current phase is a recovery phase whose timer has already
+    // finished - i.e. whether the UI should be showing an enabled Proceed
+    // button right now. Always false for every other phaseType, and false
+    // for a recovery phase whose timer is still counting down.
+    isRecoveryReadyToProceed() {
+        return this._recoveryReadyToProceed;
     }
 
     _exitPhase(phaseDescriptor) {
@@ -328,15 +425,39 @@ export class ExperimentController {
             this._currentSubtractionTask.stop();
             this._currentSubtractionTask = null;
         }
-        if (this._currentCognitiveSpeechSession) {
-            // Stop first, then read results - stop() closes out
-            // phaseEndTime and halts the microphone before we snapshot the
-            // final transcript/scoring onto this phase's record.
-            this._currentCognitiveSpeechSession.stop();
-            if (this._currentPhaseRecord) {
-                recordCognitivePerformance(this._currentPhaseRecord, this._currentCognitiveSpeechSession.getResults());
+        if (this._currentCognitiveAudioSession) {
+            const session = this._currentCognitiveAudioSession;
+            const phaseRecordForResults = this._currentPhaseRecord;
+            if (phaseRecordForResults) {
+                recordCognitiveProcessingPending(phaseRecordForResults);
             }
-            this._currentCognitiveSpeechSession = null;
+
+            // session.stop() finalizes the recording and uploads it, but is
+            // DELIBERATELY NOT awaited here - transcription/scoring latency
+            // must never delay advancing to the next phase (experiment
+            // timing is unchanged - see phaseStateMachine.js/Timer above,
+            // both of which have already moved on by the time this
+            // resolves). The promise is tracked so
+            // getPendingCognitiveProcessing() (used by ui/resultsScreen.js)
+            // can wait for every phase's results before the participant
+            // sees final scores/exports them.
+            const processingPromise = session.stop().then((result) => {
+                if (!phaseRecordForResults) {
+                    return;
+                }
+                if (result && result.status === 'succeeded') {
+                    recordCognitivePerformance(phaseRecordForResults, result.results);
+                } else {
+                    recordCognitiveProcessingFailed(phaseRecordForResults, result && result.error);
+                }
+            }).catch((error) => {
+                this._logger(`${phaseDescriptor.phaseId}: cognitive audio processing failed - ${error.message}`);
+                if (phaseRecordForResults) {
+                    recordCognitiveProcessingFailed(phaseRecordForResults, error.message);
+                }
+            });
+            this._pendingCognitiveProcessing.push(processingPromise);
+            this._currentCognitiveAudioSession = null;
         }
         if (this._currentPhaseRecord) {
             endPhaseRecord(this._currentPhaseRecord);
@@ -400,12 +521,21 @@ export class ExperimentController {
         return this._currentSubtractionTask;
     }
 
-    // The current phase's live CognitiveSpeechSession, if the microphone
-    // is actually supposed to be listening right now - null under the
-    // exact same conditions as getCurrentSubtractionTask() above (i.e.
-    // whenever cognitiveActive is false for the current phase).
-    getCurrentCognitiveSpeechSession() {
-        return this._currentCognitiveSpeechSession;
+    // The current phase's live CognitiveAudioSession, if the microphone is
+    // actually supposed to be recording right now - null under the exact
+    // same conditions as getCurrentSubtractionTask() above (i.e. whenever
+    // cognitiveActive is false for the current phase).
+    getCurrentCognitiveAudioSession() {
+        return this._currentCognitiveAudioSession;
+    }
+
+    // Every recording upload/transcription/scoring promise still in flight
+    // across the whole session so far - see _exitPhase() above.
+    // ui/resultsScreen.js awaits all of these (Promise.allSettled) before
+    // showing final cognitive results or enabling Excel export, without
+    // ever having delayed the experiment itself to get here.
+    getPendingCognitiveProcessing() {
+        return [...this._pendingCognitiveProcessing];
     }
 
     getSession() {

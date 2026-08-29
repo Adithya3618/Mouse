@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Research Dashboard — Session</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+  <div class="admin-topbar">
+    <h1>Cognitive Speech Research Dashboard</h1>
+    <span class="mono" style="color: var(--slate); font-size: 12px;">Admin/research only — not participant-facing</span>
+  </div>
+
+  <div class="admin-main">
+    <a class="back-link" id="backLink" href="index.html">&larr; Back</a>
+    <p class="eyebrow">Session</p>
+    <h2 id="sessionHeading" class="mono">—</h2>
+
+    <div class="stat-row" id="statRow"></div>
+
+    <div id="phasesContainer"></div>
+    <p class="status-line" id="statusLine"></p>
+  </div>
+
+  <script type="module" src="../js/admin/sessionDetail.js"></script>
+</body>
+</html>

@@ -344,3 +344,68 @@ test('parseNumbersFromTranscript: genuinely unrelated speech remains unresolved,
     assert.equal(results[0].resolved, false);
     assert.equal(results[0].raw, 'I lost count sorry');
 });
+
+// ADJACENT SHORT-DIGIT-RUN MERGING + IMPLICIT-HUNDREDS WORD FORM (2026
+// update for the full-phase-recording architecture - see numberParser.js's
+// module comments on mergeShortDigitRunsAndParse and
+// parseSpokenNumber's implicit-hundred branch for the full rationale).
+
+test('parseNumbersFromTranscript reconstructs a 3-digit number from two adjacent short digit runs ("8 49" -> 849)', () => {
+    assert.deepEqual(parseNumbersFromTranscript('8 49').map((r) => r.value), [849]);
+});
+
+test('parseNumbersFromTranscript treats a hyphen the same as a space between adjacent short digit runs ("8-49" -> 849)', () => {
+    assert.deepEqual(parseNumbersFromTranscript('8-49').map((r) => r.value), [849]);
+});
+
+test('parseNumbersFromTranscript reconstructs "86 5" -> 865 and "8 65" -> 865', () => {
+    assert.deepEqual(parseNumbersFromTranscript('86 5').map((r) => r.value), [865]);
+    assert.deepEqual(parseNumbersFromTranscript('8 65').map((r) => r.value), [865]);
+});
+
+test('parseNumbersFromTranscript tolerates a paused ellipsis between short digit runs ("8 ... 47" -> 847, "86 ... 5" -> 865)', () => {
+    assert.deepEqual(parseNumbersFromTranscript('8 ... 47').map((r) => r.value), [847]);
+    assert.deepEqual(parseNumbersFromTranscript('86 ... 5').map((r) => r.value), [865]);
+});
+
+test('parseNumbersFromTranscript never merges two digit runs that are already complete on their own ("960 957 954" untouched)', () => {
+    assert.deepEqual(parseNumbersFromTranscript('960 957 954').map((r) => r.value), [960, 957, 954]);
+});
+
+test('parseNumbersFromTranscript never overshoots expectedDigits when merging ("8 4 8" stays digit-by-digit, not concatenated past 3 digits)', () => {
+    // Already-covered digit-by-digit path (all-single-digit matches) - a
+    // regression guard that the new merge logic does not interfere with it.
+    assert.deepEqual(parseNumbersFromTranscript('8 4 8').map((r) => r.value), [848]);
+});
+
+test('parseSpokenNumber resolves the "hundred"-less word form ("eight forty nine" -> 849, "eight nineteen" -> 819)', () => {
+    assert.deepEqual(parseSpokenNumber('eight forty nine'), { raw: 'eight forty nine', value: 849, resolved: true });
+    assert.deepEqual(parseSpokenNumber('eight nineteen'), { raw: 'eight nineteen', value: 819, resolved: true });
+});
+
+test('parseNumbersFromTranscript resolves "eight hundred forty nine" via the hundred-anchored branch, not the implicit-hundred one', () => {
+    assert.deepEqual(parseNumbersFromTranscript('eight hundred forty nine').map((r) => r.value), [849]);
+});
+
+test('parseNumbersFromTranscript tolerates a pause/ellipsis inside the "hundred"-less word form ("uh eight ... forty nine" -> 849)', () => {
+    const results = parseNumbersFromTranscript('uh eight ... forty nine');
+    assert.deepEqual(results.map((r) => r.value), [849]);
+});
+
+test('parseNumbersFromTranscript segments two consecutive "hundred"-less word-form numbers correctly ("eight forty nine eight forty six" -> [849, 846])', () => {
+    assert.deepEqual(parseNumbersFromTranscript('eight forty nine eight forty six').map((r) => r.value), [849, 846]);
+});
+
+test('parseSpokenNumber never resolves a lone ones-word through the implicit-hundred branch (still requires a real tail)', () => {
+    const result = parseSpokenNumber('four');
+    assert.equal(result.resolved, false);
+    assert.equal(result.value, null);
+});
+
+test('parseNumbersFromTranscript never fabricates a number from unrelated speech containing an incidental digit-word substring ("hey darling")', () => {
+    const results = parseNumbersFromTranscript('hey darling');
+    assert.equal(results.length, 1);
+    assert.equal(results[0].resolved, false);
+    assert.equal(results[0].value, null);
+    assert.equal(results[0].raw, 'hey darling');
+});

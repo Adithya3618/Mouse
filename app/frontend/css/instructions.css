@@ -1,10 +1,23 @@
 .instructions-body{
   margin-bottom:32px;
-  max-width:640px;
+  max-width:720px;
 }
 .instructions-body p{
-  font-size:15px;
+  font-size:19px;
   line-height:1.6;
   color:var(--ink);
   margin:0 0 16px 0;
+}
+.instructions-body ol{
+  font-size:19px;
+  line-height:1.7;
+  color:var(--ink);
+  margin:0 0 16px 0;
+  padding-left:1.4em;
+}
+.instructions-body li{
+  margin-bottom:6px;
+}
+.instructions-body .protocol-total{
+  font-weight:600;
 }

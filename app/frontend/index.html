@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <title>Mouse Accuracy Study — Motor-Cognitive Dual-Task Experiment</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/intake.css">
 <link rel="stylesheet" href="css/instructions.css">
 <link rel="stylesheet" href="css/experiment.css">
@@ -23,33 +24,46 @@
     <span class="clock mono" id="clock">— : —</span>
   </div>
 
-  <p class="study-name">Mouse Accuracy Study</p>
-  <h1>Motor-Cognitive Dual-Task Experiment</h1>
-  <p class="subhead">Enter the participant code and today's date to begin. This session runs a <strong>motor–cognitive dual-task protocol</strong> — a short mouse-clicking baseline followed by three rounds of counting backward, with and without clicking.</p>
+  <!-- Step rail: current step + any step already reached is clickable to
+       go back to (see js/ui/intakeWizardState.js/intakeScreen.js) - never
+       lets the participant jump ahead to a step they haven't seen yet. -->
+  <div class="step-rail" id="stepRail">
+    <button type="button" class="step-rail-item" data-step="1">
+      <span class="step-rail-num">1</span>
+      <span class="step-rail-label">Overview</span>
+    </button>
+    <span class="step-rail-connector"></span>
+    <button type="button" class="step-rail-item" data-step="2">
+      <span class="step-rail-num">2</span>
+      <span class="step-rail-label">Protocol</span>
+    </button>
+    <span class="step-rail-connector"></span>
+    <button type="button" class="step-rail-item" data-step="3">
+      <span class="step-rail-num">3</span>
+      <span class="step-rail-label">Details</span>
+    </button>
+  </div>
 
-  <div class="grid">
+  <!-- STEP 1: OVERVIEW - eyebrow + title + one-line tagline, nothing else. -->
+  <div class="intake-step" id="intakeStep1">
+    <p class="study-name">Mouse Accuracy Study</p>
+    <h1>Motor&#8211;Cognitive<br><em>Dual&#8209;Task</em> Experiment</h1>
+    <p class="subhead">A short mouse-clicking baseline followed by three rounds of counting backward — with and without clicking.</p>
 
-    <!-- form column -->
-    <div>
-      <div class="field">
-        <label for="code">Participant code</label>
-        <input type="text" id="code" placeholder="e.g. P014">
-        <div class="hint">Matches the code on the participant's consent form.</div>
-      </div>
-
-      <div class="field">
-        <label for="date">Session date</label>
-        <input type="date" id="date">
-      </div>
-
-      <button class="begin" id="beginBtn" disabled>
-        Begin session <span class="arrow">→</span>
-      </button>
-
-      <div class="disclaimer">Once started, the protocol runs its full sequence automatically — instructions, then each timed phase in order. There's no need to advance screens manually.</div>
+    <div class="pulse-row">
+      <span><span class="pulse-dot motor"></span>Motor task</span>
+      <span><span class="pulse-dot cog"></span>Cognitive task</span>
+      <span class="pulse-meta">10 phases · ~19 min</span>
     </div>
 
-    <!-- session overview panel -->
+    <div class="step-nav">
+      <span></span>
+      <button type="button" class="begin" id="step1NextBtn">Read instructions <span class="arrow">→</span></button>
+    </div>
+  </div>
+
+  <!-- STEP 2: PROTOCOL - the full phase-by-phase timeline. -->
+  <div class="intake-step" id="intakeStep2" hidden>
     <div class="panel">
       <div class="panel-title"><span>Protocol overview</span><span>10 phases</span></div>
       <div class="phase-list">
@@ -97,7 +111,35 @@
       </div>
     </div>
 
+    <div class="step-nav">
+      <button type="button" class="step-back" id="step2BackBtn">← Back</button>
+      <button type="button" class="begin" id="step2NextBtn">Enter session details <span class="arrow">→</span></button>
+    </div>
   </div>
+
+  <!-- STEP 3: DETAILS - participant code + date, then Begin session. -->
+  <div class="intake-step" id="intakeStep3" hidden>
+    <div class="field">
+      <label for="code">Participant code</label>
+      <input type="text" id="code" placeholder="e.g. P014">
+      <div class="hint">Matches the code on the participant's consent form.</div>
+    </div>
+
+    <div class="field">
+      <label for="date">Session date</label>
+      <input type="date" id="date">
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="step-back" id="step3BackBtn">← Back</button>
+      <button class="begin" id="beginBtn" disabled>
+        Begin session <span class="arrow">→</span>
+      </button>
+    </div>
+
+    <div class="disclaimer">Once started, the protocol runs its full sequence automatically — instructions, then each timed phase in order. There's no need to advance screens manually.</div>
+  </div>
+
 </div>
 </section>
 
@@ -112,8 +154,20 @@
   <p class="subhead" id="participantSummary"></p>
 
   <div class="instructions-body">
-    <p>You will complete several short tasks.</p>
-    <p>Some tasks require clicking targets. Some tasks require counting backward aloud. Some tasks require doing both at the same time.</p>
+    <p>You will complete 7 tasks total, consisting of a motor baseline followed by 3 series of cognitive and dual tasks, with 90-second recovery periods between series.</p>
+    <ol>
+      <li>Dot clicking on a screen — 2 minutes</li>
+      <li>90-second recovery</li>
+      <li>Count backward by 3 — 2 minutes</li>
+      <li>Dot clicking + count backward by 3 — 2 minutes</li>
+      <li>90-second recovery</li>
+      <li>Count backward by 7 — 2 minutes</li>
+      <li>Dot clicking + count backward by 7 — 2 minutes</li>
+      <li>90-second recovery</li>
+      <li>Count backward by 17 — 2 minutes</li>
+      <li>Dot clicking + count backward by 17 — 2 minutes</li>
+    </ol>
+    <p class="protocol-total">Total protocol time: approximately 19 minutes.</p>
     <p>Follow the instructions shown on the screen throughout the experiment.</p>
   </div>
 
@@ -154,17 +208,28 @@
       <span class="pill" id="clickPill"><span class="dot"></span>Click targets — off</span>
     </div>
 
-    <!-- Speech/transcript UI - active only during SUBTRACTION_<n>/DUAL_TASK_<n>
-         phases (see js/ui/speechTranscriptPanel.js). Deliberately kept
-         inside .task-panel, separate from #gameScreen/#game below, so it
-         never overlaps or interferes with the mouse target field during
+    <!-- Recovery-only: hidden for the entire countdown, shown (enabled)
+         only once the recovery timer reaches 00:00 - see
+         js/experiment/experimentController.js#isRecoveryReadyToProceed and
+         js/ui/experimentScreen.js. The participant cannot advance past a
+         recovery phase any other way. -->
+    <button type="button" class="proceed-button" id="recoveryProceedBtn" hidden>
+      Proceed <span class="arrow">→</span>
+    </button>
+
+    <!-- Recording indicator UI - active only during SUBTRACTION_<n>/
+         DUAL_TASK_<n> phases (see js/ui/recordingPanel.js). NO transcript or
+         recognized numbers are ever shown here - the participant's complete
+         audio is recorded and sent for transcription/scoring after the
+         phase ends (see js/cognitive/cognitiveAudioSession.js). Deliberately
+         kept inside .task-panel, separate from #gameScreen/#game below, so
+         it never overlaps or interferes with the mouse target field during
          dual-task conditions. -->
     <div class="speech-panel" id="speechPanel" hidden>
-      <div class="speech-status" id="speechMicStatus">🎤 Microphone inactive</div>
-      <div class="speech-live">
-        <span class="speech-live-label">Live Response</span>
-        <p class="speech-live-value" id="speechLiveResponse">—</p>
-      </div>
+      <div class="recording-icon" aria-hidden="true">🎙️</div>
+      <div class="recording-status" id="recordingStatus">Preparing microphone…</div>
+      <div class="recording-timer" id="recordingTimer">00:00</div>
+      <p class="recording-caption">Please continue speaking</p>
       <p class="speech-error" id="speechError" hidden></p>
     </div>
   </div>
@@ -180,6 +245,13 @@
       <h1>Experiment Complete</h1>
       <p>Thank you for participating. The experiment has finished.</p>
     </div>
+
+    <!-- Shown while each phase's recording is still being uploaded/
+         transcribed/scored in the background (see
+         js/cognitive/cognitiveAudioSession.js and js/ui/resultsScreen.js) -
+         the participant never sees a raw transcript, only this simple
+         status line, per the "processing is a backend/admin process" rule. -->
+    <p class="processing-status" id="cognitiveProcessingStatus" hidden>Processing your recording(s)…</p>
 
     <div class="results-section">
       <h2 class="results-heading">Mouse Performance Results</h2>
