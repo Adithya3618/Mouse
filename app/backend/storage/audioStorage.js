@@ -16,9 +16,17 @@ const path = require('node:path');
 
 const DEFAULT_AUDIO_DIR = path.join(__dirname, '../../../data/audio');
 
+// See database/db.js's identical VERCEL_FALLBACK_DB_PATH comment: Vercel's
+// filesystem is read-only outside /tmp, so DEFAULT_AUDIO_DIR would throw
+// there. Only takes effect when AUDIO_STORAGE_DIR isn't set and VERCEL is -
+// local dev/tests are unaffected.
+const VERCEL_FALLBACK_AUDIO_DIR = '/tmp/audio';
+
 class LocalFilesystemAudioStorage {
     constructor({ baseDir, logger = console.log } = {}) {
-        this._baseDir = baseDir || process.env.AUDIO_STORAGE_DIR || DEFAULT_AUDIO_DIR;
+        this._baseDir = baseDir
+            || process.env.AUDIO_STORAGE_DIR
+            || (process.env.VERCEL ? VERCEL_FALLBACK_AUDIO_DIR : DEFAULT_AUDIO_DIR);
         // Only logged when no explicit baseDir was passed in (i.e. real
         // server startup, not a test fixture pointed at a throwaway temp
         // directory) - same rationale as db.js's startup log: a plain

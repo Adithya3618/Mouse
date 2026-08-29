@@ -19,11 +19,25 @@ const { DatabaseSync } = require('node:sqlite');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 const DEFAULT_DB_PATH = path.join(__dirname, '../../../data/db/research.sqlite');
 
+// Vercel's filesystem is read-only outside /tmp - opening DEFAULT_DB_PATH
+// there throws and crashes the whole serverless function on every request,
+// even ones that never touch the database. VERCEL is set to '1' by the
+// platform on every deployment (build and runtime), so this only changes
+// behavior there; local dev (`npm start`) and tests are unaffected and keep
+// using the real persistent data/db/research.sqlite unless DB_PATH is set
+// explicitly. Data written to /tmp on Vercel does NOT persist across cold
+// starts - this stops the crash, it does not make Vercel a real deployment
+// target for the recording/transcription pipeline (see this file's header).
+const VERCEL_FALLBACK_DB_PATH = '/tmp/research.sqlite';
+
 function resolveDbPath(dbPath) {
     if (dbPath) {
         return dbPath;
     }
-    return process.env.DB_PATH || DEFAULT_DB_PATH;
+    if (process.env.DB_PATH) {
+        return process.env.DB_PATH;
+    }
+    return process.env.VERCEL ? VERCEL_FALLBACK_DB_PATH : DEFAULT_DB_PATH;
 }
 
 // Opens (creating if necessary) a database at `dbPath` and applies the
