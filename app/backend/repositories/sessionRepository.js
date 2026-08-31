@@ -2,36 +2,36 @@
 // first recording upload for that session (see routes/recordings.js): this
 // database exists to hold cognitive-speech research data, so a session is
 // only worth a row once it has actually produced some.
-
-const crypto = require('node:crypto');
+//
+// Async throughout - see participantRepository.js's header comment for why.
 
 class SessionRepository {
     constructor(db) {
         this._db = db;
     }
 
-    upsertById({ sessionId, participantId, experimentId, sessionDate, startTime }) {
-        const existing = this.getById(sessionId);
+    async upsertById({ sessionId, participantId, experimentId, sessionDate, startTime }) {
+        const existing = await this.getById(sessionId);
         if (existing) {
             return existing;
         }
-        this._db.prepare(
+        await this._db.prepare(
             `INSERT INTO sessions (id, participant_id, experiment_id, session_date, start_time, end_time, created_at)
              VALUES (?, ?, ?, ?, ?, NULL, ?)`
         ).run(sessionId, participantId, experimentId || null, sessionDate || null, startTime || null, new Date().toISOString());
         return this.getById(sessionId);
     }
 
-    getById(id) {
-        return this._db.prepare('SELECT * FROM sessions WHERE id = ?').get(id) || null;
+    async getById(id) {
+        return (await this._db.prepare('SELECT * FROM sessions WHERE id = ?').get(id)) || null;
     }
 
-    listForParticipant(participantId) {
+    async listForParticipant(participantId) {
         return this._db.prepare('SELECT * FROM sessions WHERE participant_id = ? ORDER BY created_at ASC').all(participantId);
     }
 
-    markEnded(id, endTime) {
-        this._db.prepare('UPDATE sessions SET end_time = ? WHERE id = ?').run(endTime, id);
+    async markEnded(id, endTime) {
+        await this._db.prepare('UPDATE sessions SET end_time = ? WHERE id = ?').run(endTime, id);
     }
 }
 

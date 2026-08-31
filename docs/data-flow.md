@@ -120,23 +120,17 @@ ever served through the authenticated, range-supporting
   module; the scoring engine (`speechScoring.js`) is likewise deterministic.
   Neither ever "corrects" a participant's answer toward what was expected.
 
-## Known production gap: storage
+## Storage architecture: provider-agnostic
 
-This implementation's default database (`app/backend/database/db.js`, using
-Node's built-in `node:sqlite`) and audio storage
-(`LocalFilesystemAudioStorage`) are appropriate for local development and a
-single long-running Node process (`npm start`). They are **not** appropriate
-for Vercel's serverless deployment target (`vercel.json`), whose filesystem
-is ephemeral outside `/tmp` - a SQLite file or locally-stored audio file
-written there will not persist across invocations. Before any production
-deployment on that target (or any multi-instance deployment), swap in:
-
-- A `db` implementation with the same repository method signatures
-  (`app/backend/repositories/*.js`) backed by a real, UF-approved persistent
-  database (e.g. Postgres).
-- An `AudioStorage` implementation with the same `save()`/`read()`/
-  `exists()`/`stat()` shape (`app/backend/storage/audioStorage.js`) backed by
-  UF-approved object storage.
+See **[storage-architecture.md](storage-architecture.md)** for the full
+picture: a `ResearchDatabase`/`AudioStorage` interface pair, with SQLite +
+local filesystem for development (unchanged - see
+`app/backend/database/researchDatabase.js`'s primary/secondary design) and
+`PostgresResearchDatabase`/`ObjectStorageAudioStorage` implementations for
+production, selected via `DATABASE_PROVIDER`/`AUDIO_STORAGE_PROVIDER`
+environment variables. Vercel is one deployment target among several this
+architecture supports (a future UF-hosted server is another) - the
+application/experiment code has no awareness of which one is active.
 
 Nothing else in the application needs to change to make that swap - both
 seams already exist and are the only place these concerns are touched.

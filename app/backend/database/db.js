@@ -6,61 +6,70 @@
 // by giving repositories a same-shaped implementation against that database
 // instead - nothing else in the app touches this file directly.
 //
-// NOT SUITABLE for Vercel's serverless target as-is: that platform's
-// filesystem is ephemeral outside /tmp, so a SQLite file written there does
-// not persist across invocations. Fine for local development/testing and
-// for a single long-running Node process (`npm start`), which is this
-// project's only currently-configured way to actually run the backend.
+// Real (non-':memory:') databases are opened through researchDatabase.js's
+// primary/secondary layer - see that file for the full data-safety design
+// (durable manifest, integrity-checked secondary mirror, fail-closed
+// startup recovery). This file is just the thin entry point tests and
+// server.js actually call.
+//
+// NOT DURABLE on Vercel as deployed today: that platform's filesystem is
+// ephemeral outside /tmp, wiped on every cold start and not shared between
+// concurrent function instances. The primary/secondary machinery still runs
+// there (so a single instance's own writes stay internally consistent), but
+// it cannot survive a redeploy or a different instance handling the next
+// request - see DURABILITY_MODE below and the startup log it produces. Real
+// production durability needs a hosted database, not local/`/tmp` SQLite.
 
 const path = require('node:path');
-const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
+const { openResearchDatabase, applySchema } = require('./researchDatabase');
 
-const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
-const DEFAULT_DB_PATH = path.join(__dirname, '../../../data/db/research.sqlite');
+const DEFAULT_DATA_DIR = path.join(__dirname, '../../../data/db');
 
-// Vercel's filesystem is read-only outside /tmp - opening DEFAULT_DB_PATH
-// there throws and crashes the whole serverless function on every request,
-// even ones that never touch the database. VERCEL is set to '1' by the
-// platform on every deployment (build and runtime), so this only changes
-// behavior there; local dev (`npm start`) and tests are unaffected and keep
-// using the real persistent data/db/research.sqlite unless DB_PATH is set
-// explicitly. Data written to /tmp on Vercel does NOT persist across cold
-// starts - this stops the crash, it does not make Vercel a real deployment
-// target for the recording/transcription pipeline (see this file's header).
-const VERCEL_FALLBACK_DB_PATH = '/tmp/research.sqlite';
+// process.env.VERCEL is set to '1' by the platform on every deployment
+// (build and runtime) - used only to pick /tmp and to label the
+// non-durable status honestly, never to change any query/write behavior.
+const VERCEL_FALLBACK_DATA_DIR = '/tmp/mouse-research-db';
 
-function resolveDbPath(dbPath) {
-    if (dbPath) {
-        return dbPath;
+function resolveDataDir(override) {
+    if (override) {
+        return override;
     }
     if (process.env.DB_PATH) {
         return process.env.DB_PATH;
     }
-    return process.env.VERCEL ? VERCEL_FALLBACK_DB_PATH : DEFAULT_DB_PATH;
+    return process.env.VERCEL ? VERCEL_FALLBACK_DATA_DIR : DEFAULT_DATA_DIR;
 }
 
-// Opens (creating if necessary) a database at `dbPath` and applies the
-// schema (idempotent - CREATE TABLE IF NOT EXISTS throughout). Pass
-// ':memory:' for an isolated, disposable database (used by tests so each
-// test file gets its own connection with no shared state).
-function createDatabase(dbPath) {
-    const resolvedPath = resolveDbPath(dbPath);
-    if (resolvedPath !== ':memory:') {
-        fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
-        // Non-sensitive (just a filesystem path, never credentials/audio/
-        // transcript content) - lets anyone starting the server confirm at a
-        // glance that it's pointed at a real, persistent file rather than
-        // ':memory:' or some other transient location. Skipped for ':memory:'
-        // itself (used only by the test suite, which creates many
-        // short-lived databases per run) to avoid log spam there.
-        console.log(`[database] Using persistent database: ${resolvedPath}`);
+function durabilityMode(dataDir) {
+    if (process.env.VERCEL && !process.env.DB_PATH) {
+        return 'EPHEMERAL_TMP - NOT durable across deploys/restarts/instances. See app/backend/database/db.js header.';
+    }
+    return `PERSISTENT_LOCAL - ${dataDir}`;
+}
+
+// dbPath ':memory:' -> isolated, disposable single-connection database (no
+// primary/secondary machinery - there is nothing to protect, the whole
+// point is that it disappears when the process exits). Used only by the
+// test suite so each test file gets its own connection with no shared
+// state. Any other value is treated as the DATA DIRECTORY for the
+// primary/secondary layer (this is a deliberate, documented change from the
+// old single-file-path meaning - nothing currently sets DB_PATH, so nothing
+// depended on the old meaning; see .env.example).
+function createDatabase(dbPathOrDataDir) {
+    if (dbPathOrDataDir === ':memory:') {
+        const db = new DatabaseSync(':memory:');
+        applySchema(db);
+        return db;
     }
 
-    const db = new DatabaseSync(resolvedPath);
-    db.exec('PRAGMA foreign_keys = ON;');
-    const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
-    db.exec(schema);
+    const dataDir = resolveDataDir(dbPathOrDataDir);
+    const { db, getStatus } = openResearchDatabase({ dataDir, logger: console.log });
+    console.log(`[database] Durability mode: ${durabilityMode(dataDir)}`);
+    // `db` already has its own waitForPendingSync() (see
+    // researchDatabase.js's wrapWithSecondarySync) - only getStatus() needs
+    // attaching here, since it's returned alongside `db` rather than on it.
+    db.getStatus = getStatus;
     return db;
 }
 

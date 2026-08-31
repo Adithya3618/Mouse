@@ -1,22 +1,27 @@
--- Research data schema for the cognitive-speech pipeline:
---   Participant -> Session -> Phase -> Recording (audio) -> Transcription
---   (versioned) -> Processing run -> Responses (versioned)
+-- Postgres schema for PostgresResearchDatabase (database/postgresResearchDatabase.js).
+-- Deliberately identical in shape/columns/relationships to
+-- database/schema.sql (the SQLite reference schema) - every column type
+-- used there (TEXT, INTEGER, REAL) is valid, portable Postgres too, so
+-- there is no dialect drift to reconcile between the two backends. See
+-- schema.sql's own header for the participant -> session -> phase ->
+-- recording -> transcription -> processing_run -> responses shape and the
+-- "nothing is ever UPDATEd/DELETEd" append-only design.
 --
--- Nothing here is ever UPDATEd or DELETEd by the application - a
--- reprocessed recording gets a brand-new transcriptions/processing_runs/
--- responses row set (see app/backend/services/speechProcessingService.js),
--- never an overwrite of the previous one. recordings.storage_path always
--- points at the original, untouched audio file.
+-- CREATE TABLE/INDEX IF NOT EXISTS throughout - applied on every
+-- PostgresResearchDatabase startup, always idempotent, never destructive
+-- (see this file's own header note in postgresResearchDatabase.js).
 --
--- This is the SQLite reference implementation (see app/backend/database/db.js).
--- Swapping to a UF-approved persistent database means providing a
--- same-shaped implementation of app/backend/repositories/*.js against that
--- database - nothing else in the app needs to change.
+-- admin_audit_log and participants.deleted_at are included directly here
+-- (rather than as a separate additive migration step, the way SQLite's
+-- researchDatabase.js retrofits an existing pre-soft-delete database) since
+-- this schema is only ever applied fresh against a Postgres database that
+-- starts from nothing.
 
 CREATE TABLE IF NOT EXISTS participants (
     id TEXT PRIMARY KEY,
     participant_code TEXT NOT NULL UNIQUE,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    deleted_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
@@ -30,8 +35,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_participant ON sessions(participant_id);
 
--- phase_id is the semantic condition id (SUBTRACTION_3, DUAL_TASK_7, ...);
--- id is this row's own generated identifier.
 CREATE TABLE IF NOT EXISTS phases (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL REFERENCES sessions(id),
@@ -42,19 +45,12 @@ CREATE TABLE IF NOT EXISTS phases (
     duration REAL,
     started_at TEXT,
     ended_at TEXT,
-    -- Stored on the phase (not just passed per-request) so an admin
-    -- reprocess (routes/admin.js) can re-run scoring with the exact
-    -- settings the phase actually ran under, without depending on the
-    -- original upload request still being available.
     scoring_mode TEXT,
     expected_response_digits INTEGER,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_phases_session ON phases(session_id);
 
--- One row per phase's complete audio recording. Immutable: storage_path is
--- written once and never changed, so the original audio always remains
--- available for reprocessing (see docs/data-flow.md).
 CREATE TABLE IF NOT EXISTS recordings (
     id TEXT PRIMARY KEY,
     phase_id TEXT NOT NULL REFERENCES phases(id),
@@ -66,10 +62,6 @@ CREATE TABLE IF NOT EXISTS recordings (
 );
 CREATE INDEX IF NOT EXISTS idx_recordings_phase ON recordings(phase_id);
 
--- Versioned per recording (version 1, 2, ...). raw_text is exactly what the
--- transcription provider returned - never normalized into digits, never
--- overwritten by a later reprocessing attempt (that creates a new row with
--- version + 1 instead).
 CREATE TABLE IF NOT EXISTS transcriptions (
     id TEXT PRIMARY KEY,
     recording_id TEXT NOT NULL REFERENCES recordings(id),
@@ -83,18 +75,8 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_transcriptions_recording ON transcriptions(recording_id);
--- Backstop against a version collision under concurrent reprocessing
--- requests (see repositories/transcriptionRepository.js#insert, which
--- computes the version atomically to avoid this in the first place - this
--- index turns any collision that somehow still happens into a loud
--- constraint violation instead of two rows silently claiming the same
--- version).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_transcriptions_recording_version ON transcriptions(recording_id, version);
 
--- One processing_runs row per (re)run of numberParser.js/speechScoring.js
--- against a given transcription. parser_version is a free-text tag (bumped
--- manually if the parsing logic itself ever changes) so the admin dashboard
--- can distinguish which run produced which responses.
 CREATE TABLE IF NOT EXISTS processing_runs (
     id TEXT PRIMARY KEY,
     transcription_id TEXT NOT NULL REFERENCES transcriptions(id),
@@ -107,9 +89,6 @@ CREATE TABLE IF NOT EXISTS processing_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_processing_runs_transcription ON processing_runs(transcription_id);
 
--- The section-9 research data model, one row per parsed response, scoped to
--- one processing_runs row. correctness is 'correct' | 'incorrect' |
--- 'unresolved' (mirrors speechScoring.js's own vocabulary, unchanged).
 CREATE TABLE IF NOT EXISTS responses (
     id TEXT PRIMARY KEY,
     processing_run_id TEXT NOT NULL REFERENCES processing_runs(id),
@@ -124,3 +103,12 @@ CREATE TABLE IF NOT EXISTS responses (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_responses_run ON responses(processing_run_id);
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    details_json TEXT,
+    performed_at TEXT NOT NULL
+);

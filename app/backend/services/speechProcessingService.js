@@ -52,7 +52,7 @@ class SpeechProcessingService {
     // config/experimentConfig.js, threaded through by the caller (routes/recordings.js/admin.js)
     // exactly as experimentController.js already does on the frontend.
     async process({ recordingId, phase, scoringOptions }) {
-        const recording = this._recordingRepository.getById(recordingId);
+        const recording = await this._recordingRepository.getById(recordingId);
         if (!recording) {
             throw new Error(`No recording found with id ${recordingId}`);
         }
@@ -78,7 +78,7 @@ class SpeechProcessingService {
             errorMessage = error.message;
         }
 
-        const transcription = this._transcriptionRepository.insert({
+        const transcription = await this._transcriptionRepository.insert({
             recordingId,
             provider: this._transcriptionProvider.name,
             model,
@@ -118,7 +118,7 @@ class SpeechProcessingService {
 
         const mapped = mapToResearchRecords(scored, { startingNumber, subtractionValue, mode: scoringMode });
 
-        const processingRun = this._responseRepository.insertProcessingRun({
+        const processingRun = await this._responseRepository.insertProcessingRun({
             transcriptionId: transcription.id,
             parserVersion: PARSER_VERSION,
             scoringMode,
@@ -126,7 +126,7 @@ class SpeechProcessingService {
             subtractionValue,
             startingNumber
         });
-        this._responseRepository.insertResponses(processingRun.id, mapped);
+        await this._responseRepository.insertResponses(processingRun.id, mapped);
 
         const correctResponses = scored.filter((r) => r.correctness === 'correct').length;
         const incorrectResponses = scored.filter((r) => r.correctness === 'incorrect').length;

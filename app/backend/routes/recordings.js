@@ -35,15 +35,15 @@ function createRecordingsRouter({ participantRepository, sessionRepository, phas
             const expectedResponseDigits = numberOrNull(body.expectedResponseDigits);
             const scoringMode = body.scoringMode || null;
 
-            const participant = participantRepository.upsertByCode(participantCode);
-            const session = sessionRepository.upsertById({
+            const participant = await participantRepository.upsertByCode(participantCode);
+            const session = await sessionRepository.upsertById({
                 sessionId,
                 participantId: participant.id,
                 experimentId: body.experimentId || null,
                 sessionDate: body.sessionDate || null,
                 startTime: body.sessionStartTime || null
             });
-            const phase = phaseRepository.upsert({
+            const phase = await phaseRepository.upsert({
                 sessionId: session.id,
                 phaseId,
                 phaseType: body.phaseType || null,
@@ -55,7 +55,7 @@ function createRecordingsRouter({ participantRepository, sessionRepository, phas
                 expectedResponseDigits
             });
             if (body.endedAt) {
-                phaseRepository.markEnded(phase.id, body.endedAt);
+                await phaseRepository.markEnded(phase.id, body.endedAt);
             }
 
             const extension = extensionForMime(req.file.mimetype);
@@ -65,7 +65,7 @@ function createRecordingsRouter({ participantRepository, sessionRepository, phas
                 buffer: req.file.buffer,
                 extension
             });
-            const recording = recordingRepository.insert({
+            const recording = await recordingRepository.insert({
                 phaseId: phase.id,
                 storagePath,
                 mimeType: req.file.mimetype || 'audio/webm',

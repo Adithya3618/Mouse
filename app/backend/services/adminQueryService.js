@@ -7,6 +7,16 @@
 // not a high-volume production system) - keeps each query auditable and
 // keeps the repository layer swappable (see repositories/*.js) without this
 // file's logic needing to change.
+//
+// Every method here is async, and every fan-out over a list of child
+// records uses Promise.all(...map(async ...)) rather than a plain
+// synchronous .map() - the repositories underneath are async now (see
+// repositories/participantRepository.js's header comment for why: a real
+// networked database can only ever be queried asynchronously), so composing
+// them requires awaiting each one. Against SQLiteResearchDatabase this
+// still runs in the same order, on the same data, with no synchronous
+// section fewer since node:sqlite is single-threaded/blocking underneath
+// regardless.
 
 // A session is expected to produce a recording for each of these 6
 // cognitive-active phases (see config/experimentConfig.js#subtractionValues
@@ -24,8 +34,9 @@ class AdminQueryService {
         this._responses = responseRepository;
     }
 
-    listParticipants({ search, status, needsReview, minAccuracy, sort = 'participantCode', sortDir = 'asc' } = {}) {
-        let summaries = this._participants.list().map((p) => this._buildParticipantSummary(p));
+    async listParticipants({ search, status, needsReview, minAccuracy, sort = 'participantCode', sortDir = 'asc' } = {}) {
+        const participants = await this._participants.list();
+        let summaries = await Promise.all(participants.map((p) => this._buildParticipantSummary(p)));
 
         if (search) {
             const query = search.trim().toLowerCase();
@@ -55,21 +66,22 @@ class AdminQueryService {
         return summaries;
     }
 
-    getParticipantProfile(participantId) {
-        const participant = this._participants.getById(participantId);
-        if (!participant) {
+    async getParticipantProfile(participantId) {
+        const participant = await this._participants.getById(participantId);
+        if (!participant || participant.deleted_at) {
             return null;
         }
         return this._buildParticipantSummary(participant);
     }
 
-    getSessionDetail(sessionId) {
-        const session = this._sessions.getById(sessionId);
+    async getSessionDetail(sessionId) {
+        const session = await this._sessions.getById(sessionId);
         if (!session) {
             return null;
         }
-        const participant = this._participants.getById(session.participant_id);
-        const phaseDetails = this._phases.listForSession(sessionId).map((phase) => this._buildPhaseDetail(phase));
+        const participant = await this._participants.getById(session.participant_id);
+        const phases = await this._phases.listForSession(sessionId);
+        const phaseDetails = await Promise.all(phases.map((phase) => this._buildPhaseDetail(phase)));
 
         const totals = summarizeResponses(phaseDetails.flatMap((p) => p.responses));
         return {
@@ -88,8 +100,9 @@ class AdminQueryService {
         };
     }
 
-    _buildParticipantSummary(participant) {
-        const sessions = this._sessions.listForParticipant(participant.id).map((session) => this._buildSessionSummary(session));
+    async _buildParticipantSummary(participant) {
+        const sessionRows = await this._sessions.listForParticipant(participant.id);
+        const sessions = await Promise.all(sessionRows.map((session) => this._buildSessionSummary(session)));
         const totals = summarizeResponses(sessions.flatMap((s) => s.responses));
         const completionStatus = sessions.length === 0
             ? 'No sessions'
@@ -106,8 +119,9 @@ class AdminQueryService {
         };
     }
 
-    _buildSessionSummary(session) {
-        const phaseDetails = this._phases.listForSession(session.id).map((phase) => this._buildPhaseDetail(phase));
+    async _buildSessionSummary(session) {
+        const phases = await this._phases.listForSession(session.id);
+        const phaseDetails = await Promise.all(phases.map((phase) => this._buildPhaseDetail(phase)));
         const totals = summarizeResponses(phaseDetails.flatMap((p) => p.responses));
         const complete = phaseDetails.length >= EXPECTED_PHASE_COUNT && phaseDetails.every((p) => p.transcriptionStatus === 'succeeded');
 
@@ -125,15 +139,15 @@ class AdminQueryService {
         };
     }
 
-    _buildPhaseDetail(phase) {
-        const recording = this._recordings.getLatestForPhase(phase.id);
-        const transcriptions = recording ? this._transcriptions.listForRecording(recording.id) : [];
+    async _buildPhaseDetail(phase) {
+        const recording = await this._recordings.getLatestForPhase(phase.id);
+        const transcriptions = recording ? await this._transcriptions.listForRecording(recording.id) : [];
         const latestTranscription = transcriptions.length > 0 ? transcriptions[transcriptions.length - 1] : null;
         const processingRuns = latestTranscription
-            ? this._responses.listProcessingRunsForTranscription(latestTranscription.id)
+            ? await this._responses.listProcessingRunsForTranscription(latestTranscription.id)
             : [];
         const latestRun = processingRuns.length > 0 ? processingRuns[processingRuns.length - 1] : null;
-        const responses = latestRun ? this._responses.listResponsesForRun(latestRun.id) : [];
+        const responses = latestRun ? await this._responses.listResponsesForRun(latestRun.id) : [];
         const totals = summarizeResponses(responses);
 
         return {

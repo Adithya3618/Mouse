@@ -49,14 +49,15 @@ async function startAdminServer({ token = 'test-admin-token' } = {}) {
 // calls + a real processing pass (stub provider) - mirrors what
 // routes/recordings.js would have produced.
 async function seedSession(context, { participantCode, sessionId, transcriptText }) {
-    const participant = context.participantRepository.upsertByCode(participantCode);
-    const session = context.sessionRepository.upsertById({ sessionId, participantId: participant.id, experimentId: 'motor-cognitive-dual-task' });
-    const phase = context.phaseRepository.upsert({
+    const participant = await context.participantRepository.upsertByCode(participantCode);
+    const session = await context.sessionRepository.upsertById({ sessionId, participantId: participant.id, experimentId: 'motor-cognitive-dual-task' });
+    const phase = await context.phaseRepository.upsert({
         sessionId: session.id, phaseId: 'SUBTRACTION_3', phaseType: 'SUBTRACTION',
         subtractionValue: 3, startingNumber: 800, duration: 120, startedAt: new Date().toISOString(),
         scoringMode: 'adaptive', expectedResponseDigits: 3
     });
-    const recording = context.recordingRepository.insert({ phaseId: phase.id, storagePath: await context.audioStorage.save({ sessionId: session.id, phaseRecordId: phase.id, buffer: Buffer.from('audio'), extension: 'webm' }), mimeType: 'audio/webm' });
+    const storagePath = await context.audioStorage.save({ sessionId: session.id, phaseRecordId: phase.id, buffer: Buffer.from('audio'), extension: 'webm' });
+    const recording = await context.recordingRepository.insert({ phaseId: phase.id, storagePath, mimeType: 'audio/webm' });
 
     const provider = new StubTranscriptionProvider({ text: transcriptText });
     const previousProvider = context.speechProcessingService._transcriptionProvider;
@@ -177,7 +178,7 @@ test('POST /api/admin/recordings/:id/reprocess creates a new version without tou
     try {
         const { recording } = await seedSession(context, { participantCode: 'P006', sessionId: 'session-6', transcriptText: '944 941 938' });
         const originalAudio = await context.audioStorage.read(recording.storage_path);
-        const firstTranscription = context.transcriptionRepository.getLatestForRecording(recording.id);
+        const firstTranscription = await context.transcriptionRepository.getLatestForRecording(recording.id);
         assert.equal(firstTranscription.version, 1);
 
         const response = await fetch(`${baseUrl}/api/admin/recordings/${recording.id}/reprocess`, {
@@ -188,7 +189,7 @@ test('POST /api/admin/recordings/:id/reprocess creates a new version without tou
         assert.equal(json.status, 'succeeded');
         assert.equal(json.transcriptionVersion, 2);
 
-        const versions = context.transcriptionRepository.listForRecording(recording.id);
+        const versions = await context.transcriptionRepository.listForRecording(recording.id);
         assert.equal(versions.length, 2);
         assert.equal(versions[0].version, 1);
         assert.equal(versions[0].raw_text, '944 941 938');

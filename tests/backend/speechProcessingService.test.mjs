@@ -16,7 +16,7 @@ function makeFakeAudioStorage() {
     return { async read() { return Buffer.from('fake audio'); } };
 }
 
-function setupWorld({ transcriptText } = {}) {
+async function setupWorld({ transcriptText } = {}) {
     const db = createDatabase(':memory:');
     const participantRepository = new ParticipantRepository(db);
     const sessionRepository = new SessionRepository(db);
@@ -25,14 +25,14 @@ function setupWorld({ transcriptText } = {}) {
     const transcriptionRepository = new TranscriptionRepository(db);
     const responseRepository = new ResponseRepository(db);
 
-    const participant = participantRepository.upsertByCode('P001');
-    const session = sessionRepository.upsertById({ sessionId: 'session-1', participantId: participant.id, experimentId: 'motor-cognitive-dual-task' });
-    const phase = phaseRepository.upsert({
+    const participant = await participantRepository.upsertByCode('P001');
+    const session = await sessionRepository.upsertById({ sessionId: 'session-1', participantId: participant.id, experimentId: 'motor-cognitive-dual-task' });
+    const phase = await phaseRepository.upsert({
         sessionId: session.id, phaseId: 'SUBTRACTION_3', phaseType: 'SUBTRACTION',
         subtractionValue: 3, startingNumber: 800, duration: 120, startedAt: new Date().toISOString(),
         scoringMode: 'adaptive', expectedResponseDigits: 3
     });
-    const recording = recordingRepository.insert({ phaseId: phase.id, storagePath: 'session-1/phase.webm', mimeType: 'audio/webm', durationSeconds: 120, fileSizeBytes: 1000 });
+    const recording = await recordingRepository.insert({ phaseId: phase.id, storagePath: 'session-1/phase.webm', mimeType: 'audio/webm', durationSeconds: 120, fileSizeBytes: 1000 });
 
     const service = new SpeechProcessingService({
         audioStorage: makeFakeAudioStorage(),
@@ -44,7 +44,7 @@ function setupWorld({ transcriptText } = {}) {
 }
 
 test('processes a stub transcript end-to-end: raw transcript preserved, numbers parsed, adaptively scored, and persisted', async () => {
-    const { service, recording, phase, transcriptionRepository, responseRepository } = setupWorld({
+    const { service, recording, phase, transcriptionRepository, responseRepository } = await setupWorld({
         transcriptText: '797 794 792 789 786'
     });
 
@@ -68,19 +68,19 @@ test('processes a stub transcript end-to-end: raw transcript preserved, numbers 
     assert.deepEqual(responses.map((r) => r.correctness), ['correct', 'correct', 'incorrect', 'correct', 'correct']);
 
     // Persisted rows exist and match.
-    const storedTranscription = transcriptionRepository.getLatestForRecording(recording.id);
+    const storedTranscription = await transcriptionRepository.getLatestForRecording(recording.id);
     assert.equal(storedTranscription.raw_text, '797 794 792 789 786');
-    const run = responseRepository.getLatestProcessingRunForTranscription(storedTranscription.id);
-    const storedResponses = responseRepository.listResponsesForRun(run.id);
+    const run = await responseRepository.getLatestProcessingRunForTranscription(storedTranscription.id);
+    const storedResponses = await responseRepository.listResponsesForRun(run.id);
     assert.equal(storedResponses.length, 5);
 });
 
 test('a wrong answer becomes the reference point for the next expected number, and is never silently corrected', async () => {
-    const { service, recording, phase, responseRepository } = setupWorld({ transcriptText: '797 794 792 789 786' });
+    const { service, recording, phase, responseRepository } = await setupWorld({ transcriptText: '797 794 792 789 786' });
     const result = await service.process({ recordingId: recording.id, phase, scoringOptions: { scoringMode: 'adaptive', expectedResponseDigits: 3 } });
 
-    const run = responseRepository.getLatestProcessingRunForTranscription(result.transcription.id);
-    const rows = responseRepository.listResponsesForRun(run.id);
+    const run = await responseRepository.getLatestProcessingRunForTranscription(result.transcription.id);
+    const rows = await responseRepository.listResponsesForRun(run.id);
 
     // Response 3 (index 2): expected 791, actual 792, incorrect.
     assert.equal(rows[2].expected_number, 791);
@@ -106,7 +106,7 @@ test('deterministic number reconstruction cases flow through unmodified (numberP
     ];
 
     for (const { text, expected } of cases) {
-        const { service, recording, phase } = setupWorld({ transcriptText: text });
+        const { service, recording, phase } = await setupWorld({ transcriptText: text });
         const result = await service.process({ recordingId: recording.id, phase, scoringOptions: { scoringMode: 'adaptive', expectedResponseDigits: 3 } });
         assert.deepEqual(
             result.results.responses.filter((r) => r.parsedNumber != null).map((r) => r.parsedNumber),
@@ -117,7 +117,7 @@ test('deterministic number reconstruction cases flow through unmodified (numberP
 });
 
 test('unrelated speech never becomes a fabricated number - status is unresolved, raw transcript untouched', async () => {
-    const { service, recording, phase } = setupWorld({ transcriptText: 'hey darling' });
+    const { service, recording, phase } = await setupWorld({ transcriptText: 'hey darling' });
     const result = await service.process({ recordingId: recording.id, phase, scoringOptions: { scoringMode: 'adaptive', expectedResponseDigits: 3 } });
 
     assert.equal(result.transcription.raw_text, 'hey darling');
@@ -134,10 +134,10 @@ test('a failed transcription is recorded as its own status and never fabricates 
     const transcriptionRepository = new TranscriptionRepository(db);
     const responseRepository = new ResponseRepository(db);
 
-    const participant = participantRepository.upsertByCode('P002');
-    const session = sessionRepository.upsertById({ sessionId: 'session-2', participantId: participant.id });
-    const phase = phaseRepository.upsert({ sessionId: session.id, phaseId: 'SUBTRACTION_3', subtractionValue: 3, startingNumber: 800, scoringMode: 'adaptive', expectedResponseDigits: 3 });
-    const recording = recordingRepository.insert({ phaseId: phase.id, storagePath: 'x', mimeType: 'audio/webm' });
+    const participant = await participantRepository.upsertByCode('P002');
+    const session = await sessionRepository.upsertById({ sessionId: 'session-2', participantId: participant.id });
+    const phase = await phaseRepository.upsert({ sessionId: session.id, phaseId: 'SUBTRACTION_3', subtractionValue: 3, startingNumber: 800, scoringMode: 'adaptive', expectedResponseDigits: 3 });
+    const recording = await recordingRepository.insert({ phaseId: phase.id, storagePath: 'x', mimeType: 'audio/webm' });
 
     const failingProvider = { name: 'failing', async transcribe() { throw new Error('service unavailable'); } };
     const service = new SpeechProcessingService({
@@ -154,7 +154,7 @@ test('a failed transcription is recorded as its own status and never fabricates 
 });
 
 test('reprocessing creates a new transcription version and new responses without touching the previous version', async () => {
-    const { service, recording, phase, transcriptionRepository, responseRepository } = setupWorld({ transcriptText: '944 941 938' });
+    const { service, recording, phase, transcriptionRepository, responseRepository } = await setupWorld({ transcriptText: '944 941 938' });
 
     const first = await service.process({ recordingId: recording.id, phase, scoringOptions: { scoringMode: 'adaptive', expectedResponseDigits: 3 } });
     assert.equal(first.transcription.version, 1);
@@ -174,15 +174,15 @@ test('reprocessing creates a new transcription version and new responses without
     assert.equal(second.transcription.raw_text, '944 940 937');
 
     // The original (version 1) row is untouched.
-    const allVersions = transcriptionRepository.listForRecording(recording.id);
+    const allVersions = await transcriptionRepository.listForRecording(recording.id);
     assert.equal(allVersions.length, 2);
     assert.equal(allVersions[0].version, 1);
     assert.equal(allVersions[0].raw_text, '944 941 938');
     assert.equal(allVersions[1].version, 2);
 
     // Both processing runs' responses independently exist.
-    const runsV1 = responseRepository.listProcessingRunsForTranscription(allVersions[0].id);
-    const runsV2 = responseRepository.listProcessingRunsForTranscription(allVersions[1].id);
+    const runsV1 = await responseRepository.listProcessingRunsForTranscription(allVersions[0].id);
+    const runsV2 = await responseRepository.listProcessingRunsForTranscription(allVersions[1].id);
     assert.equal(runsV1.length, 1);
     assert.equal(runsV2.length, 1);
 });

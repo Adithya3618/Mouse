@@ -76,7 +76,7 @@ test('POST /api/recordings stores the audio unchanged, transcribes it, and retur
         assert.equal(json.results.rawTranscript, '797 794 792 789 786');
 
         // The exact original bytes were persisted, unmodified.
-        const recording = context.recordingRepository.getById(json.recordingId);
+        const recording = await context.recordingRepository.getById(json.recordingId);
         const stored = await context.audioStorage.read(recording.storage_path);
         assert.equal(Buffer.compare(stored, audioBuffer), 0);
     } finally {
@@ -120,10 +120,10 @@ test('two recordings for the same session/participant are linked under one parti
             assert.equal(response.status, 200);
         }
 
-        const participant = context.participantRepository.getByCode('P002');
-        const sessions = context.sessionRepository.listForParticipant(participant.id);
+        const participant = await context.participantRepository.getByCode('P002');
+        const sessions = await context.sessionRepository.listForParticipant(participant.id);
         assert.equal(sessions.length, 1);
-        const phases = context.phaseRepository.listForSession(sessions[0].id);
+        const phases = await context.phaseRepository.listForSession(sessions[0].id);
         assert.equal(phases.length, 2);
     } finally {
         server.close();
