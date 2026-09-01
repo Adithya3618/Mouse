@@ -70,6 +70,14 @@ function validateSlot(filePath) {
     let db;
     try {
         db = new DatabaseSync(filePath, { readOnly: true });
+        // Same reasoning as openResearchDatabase()'s write connection: a
+        // validation read can otherwise collide with another process
+        // briefly holding a write lock on this same file (e.g. its own
+        // concurrent startup/schema-application) and fail with "database
+        // is locked" instead of just waiting the brief moment it takes for
+        // that lock to clear. This is a connection-local setting - it
+        // never touches the file itself, so it's safe on a read-only handle.
+        db.exec('PRAGMA busy_timeout = 5000;');
         const integrity = db.prepare('PRAGMA integrity_check').get();
         if (!integrity || integrity.integrity_check !== 'ok') {
             return { valid: false, exists: true, reason: `integrity_check failed: ${JSON.stringify(integrity)}` };
@@ -106,25 +114,42 @@ function ensureColumn(db, table, column, definition) {
 // CREATE TABLE IF NOT EXISTS throughout schema.sql, plus the additive
 // soft-delete column and audit-log table below - all idempotent, all safe
 // to re-run against a database that already has real data in it.
+//
+// Wrapped in one BEGIN IMMEDIATE/COMMIT transaction so schema application
+// is atomic from any concurrent reader's point of view - without this, a
+// second process opening this same file mid-way through the individual
+// CREATE TABLE statements below (each of which auto-commits on its own
+// otherwise) could see a partially-created schema (e.g. `participants`
+// table present, `sessions` not yet) and incorrectly treat the database as
+// invalid. BEGIN IMMEDIATE takes the write lock up front, so a concurrent
+// reader sees either the pre-schema state or the fully-applied schema,
+// never something in between.
 function applySchema(db) {
     db.exec('PRAGMA foreign_keys = ON;');
-    db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
+    db.exec('BEGIN IMMEDIATE;');
+    try {
+        db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
 
-    // Soft-delete support for admin deletion (see routes/adminDelete.js) -
-    // NULL for every normal row; only ever set by an authenticated admin
-    // request, never by startup/schema code.
-    ensureColumn(db, 'participants', 'deleted_at', 'TEXT');
+        // Soft-delete support for admin deletion (see routes/adminDelete.js) -
+        // NULL for every normal row; only ever set by an authenticated admin
+        // request, never by startup/schema code.
+        ensureColumn(db, 'participants', 'deleted_at', 'TEXT');
 
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS admin_audit_log (
-            id TEXT PRIMARY KEY,
-            action TEXT NOT NULL,
-            target_type TEXT NOT NULL,
-            target_id TEXT NOT NULL,
-            details_json TEXT,
-            performed_at TEXT NOT NULL
-        );
-    `);
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS admin_audit_log (
+                id TEXT PRIMARY KEY,
+                action TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                details_json TEXT,
+                performed_at TEXT NOT NULL
+            );
+        `);
+        db.exec('COMMIT;');
+    } catch (error) {
+        db.exec('ROLLBACK;');
+        throw error;
+    }
 }
 
 // Copies `sourcePath` into a verified, integrity-checked file at
@@ -220,14 +245,17 @@ function chooseActiveSlot(dataDir, logger) {
         return { slot: 'a', reason: 'fresh install - no existing database found', freshInstall: true };
     }
 
-    // A manifest that exists but fails to parse is a fail-closed signal on
-    // its own - never treated the same as "no manifest".
+    // A manifest that exists but fails to parse is NOT automatically a
+    // fail-closed signal by itself: if a known-valid database copy can
+    // still be recovered from the slot files themselves, recovery must be
+    // attempted first (only actual data loss risk should fail closed - see
+    // the ambiguity-resolution logic below, which already does exactly
+    // this for the "manifest missing" case and is reused here unchanged).
+    // A corrupt manifest is logged loudly either way, and rebuilt from
+    // scratch once a slot is chosen (see openResearchDatabase()) - it is
+    // never left corrupt or silently trusted.
     if (manifest && manifest.corrupt) {
-        throw new StartupSafetyError(
-            `manifest.json exists but is corrupt/unreadable (${manifest.error || 'malformed'}). ` +
-            `Refusing to guess which database copy is authoritative. Slot a: ${describe(aValidation)}. Slot b: ${describe(bValidation)}. ` +
-            `Both files have been left untouched - restore or repair manifest.json manually, or restore from data/db/pre-migration-backup-*/ if needed.`
-        );
+        logger(`[database] manifest.json exists but is corrupt/unreadable (${manifest.error || 'malformed'}) - attempting recovery from the slot files themselves rather than failing immediately. Slot a: ${describe(aValidation)}. Slot b: ${describe(bValidation)}.`);
     }
 
     // Hard rule, independent of everything else: a structurally valid but
@@ -266,26 +294,28 @@ function chooseActiveSlot(dataDir, logger) {
         );
     }
 
-    // No usable manifest, but at least one slot file exists on disk -
-    // ambiguous by definition (we have no generation history to trust).
-    // Resolve conservatively and immediately persist a fresh manifest so
-    // this ambiguity cannot recur.
+    // No usable manifest (either missing, or corrupt and just logged
+    // above), but at least one slot file exists on disk - ambiguous by
+    // definition (we have no generation history to trust). Resolve
+    // conservatively and immediately persist a fresh manifest so this
+    // ambiguity cannot recur.
+    const manifestState = manifest && manifest.corrupt ? 'manifest corrupt' : 'manifest missing';
     if (aValidation.valid && bValidation.valid) {
         const slot = aValidation.totalRows >= bValidation.totalRows ? 'a' : 'b';
-        logger(`[database] AMBIGUITY: both slots are valid but no usable manifest was found. Choosing slot ${slot} (${Math.max(aValidation.totalRows, bValidation.totalRows)} rows) as it has the most data. Both files remain on disk regardless.`);
-        return { slot, reason: 'ambiguous - manifest missing, both slots valid, chose slot with more rows', recovery: true };
+        logger(`[database] AMBIGUITY: both slots are valid but no usable manifest was found (${manifestState}). Choosing slot ${slot} (${Math.max(aValidation.totalRows, bValidation.totalRows)} rows) as it has the most data. Both files remain on disk regardless.`);
+        return { slot, reason: `ambiguous - ${manifestState}, both slots valid, chose slot with more rows`, recovery: true };
     }
     if (aValidation.valid) {
-        return { slot: 'a', reason: 'only slot a is valid (no usable manifest)', recovery: true };
+        return { slot: 'a', reason: `only slot a is valid (${manifestState})`, recovery: true };
     }
     if (bValidation.valid) {
-        return { slot: 'b', reason: 'only slot b is valid (no usable manifest)', recovery: true };
+        return { slot: 'b', reason: `only slot b is valid (${manifestState})`, recovery: true };
     }
 
     // Both invalid/missing and this ISN'T a fresh install (something exists
     // on disk that we could not validate) - FAIL CLOSED.
     throw new StartupSafetyError(
-        `Could not find any valid database copy. Slot a: ${describe(aValidation)}. Slot b: ${describe(bValidation)}. ` +
+        `Could not find any valid database copy (${manifestState}). Slot a: ${describe(aValidation)}. Slot b: ${describe(bValidation)}. ` +
         `Refusing to create a new empty database, because at least one on-disk artifact exists that could not be validated - ` +
         `creating a blank database here could silently orphan real research data. Nothing has been deleted or modified. ` +
         `Check data/db/ manually, and data/db/pre-migration-backup-*/ if present, before restarting.`
@@ -393,12 +423,50 @@ function wrapWithSecondarySync(rawDb, { dataDir, activeSlot, logger, getManifest
 // database rooted at `dataDir`. Returns { db, getStatus, close,
 // waitForPendingSync } - `db` is what repositories receive, unchanged from
 // how they already use a plain node:sqlite DatabaseSync.
+// If two processes cold-start against the SAME, previously-empty shared
+// directory at (as close as the OS allows to) the same instant, one of
+// them can briefly observe the other's database file mid-creation - it
+// exists, but not every table has been committed by applySchema()'s
+// transaction yet. That specific signature ("missing/unreadable table
+// <x>") is the one case a short, bounded retry is safe and likely to
+// self-resolve, since the other process's schema transaction commits
+// within milliseconds. Any OTHER failure reason (real corruption, "file is
+// not a database", both slots genuinely invalid) is never retried here -
+// it still fails closed immediately, exactly as chooseActiveSlot() decides
+// on its own. A StartupSafetyError is always safe to retry regardless: it
+// never deletes or modifies anything, so worst case this just re-throws
+// after the retry budget is spent, identical to not retrying at all.
+const CONCURRENT_INIT_RETRY_ATTEMPTS = 5;
+const CONCURRENT_INIT_RETRY_DELAY_MS = 40;
+
+function sleepSync(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function chooseActiveSlotWithRetry(dataDir, logger) {
+    for (let attempt = 1; attempt <= CONCURRENT_INIT_RETRY_ATTEMPTS; attempt += 1) {
+        try {
+            return chooseActiveSlot(dataDir, logger);
+        } catch (error) {
+            const looksLikeConcurrentInit = error instanceof StartupSafetyError && /missing\/unreadable table/.test(error.message);
+            if (!looksLikeConcurrentInit || attempt === CONCURRENT_INIT_RETRY_ATTEMPTS) {
+                throw error;
+            }
+            logger(`[database] Startup validation saw a database mid-creation by another process (attempt ${attempt}/${CONCURRENT_INIT_RETRY_ATTEMPTS}) - retrying shortly rather than failing immediately.`);
+            sleepSync(CONCURRENT_INIT_RETRY_DELAY_MS);
+        }
+    }
+    // Unreachable (the loop above always returns or throws), kept only to
+    // satisfy control-flow analysis.
+    throw new StartupSafetyError('chooseActiveSlotWithRetry: exhausted retries without a definitive result.');
+}
+
 function openResearchDatabase({ dataDir, logger = console.log }) {
     fs.mkdirSync(dataDir, { recursive: true });
 
     adoptLegacySingleFileIfPresent(dataDir, logger);
 
-    const decision = chooseActiveSlot(dataDir, logger);
+    const decision = chooseActiveSlotWithRetry(dataDir, logger);
     const activeSlot = decision.slot;
     const activePath = slotPath(dataDir, activeSlot);
 
@@ -426,6 +494,18 @@ function openResearchDatabase({ dataDir, logger = console.log }) {
     }
 
     const rawDb = new DatabaseSync(activePath);
+    // busy_timeout: if another process briefly holds a write lock on this
+    // same file (e.g. two processes' cold starts overlapping against
+    // shared storage, or a concurrent secondary-sync elsewhere), SQLite
+    // retries internally for up to this long instead of immediately
+    // throwing "database is locked". WAL mode already lets readers and a
+    // writer proceed concurrently; this covers the remaining writer-vs-
+    // writer case. This does not turn SQLite into a true multi-writer
+    // database for high-concurrency serverless use - see
+    // docs/storage-architecture.md for why that case needs Postgres - it
+    // only smooths over the brief, incidental overlaps a normal
+    // single-process-at-a-time deployment can still hit.
+    rawDb.exec('PRAGMA busy_timeout = 5000;');
     rawDb.exec('PRAGMA journal_mode = WAL;');
     applySchema(rawDb);
 

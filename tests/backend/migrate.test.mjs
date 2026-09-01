@@ -167,3 +167,35 @@ test('migrateAudio() never deletes or modifies the source audio files', async ()
 
     assert.equal(Buffer.compare(beforeBytes, afterBytes), 0);
 });
+
+test('migrateAudio() catches same-size-but-corrupted audio via checksum, not just size comparison', async () => {
+    const { db: sourceDb, audioStorage: sourceAudioStorage, recording } = await seedSource();
+    const destDb = createDatabase(freshDbDir());
+    await migrateDatabase({ source: sourceDb, destination: destDb, logger: () => {} });
+
+    // A destination storage that silently flips one byte on every save() -
+    // same length as the source, but genuinely different content. Size
+    // comparison alone would miss this; checksum comparison must not.
+    const realDestAudioStorage = new LocalFilesystemAudioStorage({ baseDir: freshAudioDir() });
+    const corruptingDestAudioStorage = {
+        async save(args) {
+            const corrupted = Buffer.from(args.buffer);
+            corrupted[0] = corrupted[0] ^ 0xff;
+            return realDestAudioStorage.save({ ...args, buffer: corrupted });
+        },
+        read: (key) => realDestAudioStorage.read(key),
+        stat: (key) => realDestAudioStorage.stat(key),
+        exists: (key) => realDestAudioStorage.exists(key)
+    };
+
+    const report = await migrateAudio({ sourceStorage: sourceAudioStorage, destinationStorage: corruptingDestAudioStorage, destinationDb: destDb, logger: () => {} });
+
+    assert.equal(report.verified, 0, 'a checksum-mismatched copy must not be counted as verified');
+    assert.equal(report.errors.length, 1);
+    assert.match(report.errors[0].error, /checksum mismatch/);
+
+    // And the real source recording is completely unaffected by the
+    // destination-side corruption.
+    const stillOriginal = await sourceAudioStorage.read(recording.storage_path);
+    assert.equal(stillOriginal.toString(), 'real-ish audio bytes');
+});

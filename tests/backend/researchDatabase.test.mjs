@@ -383,3 +383,133 @@ test('TEST 14: no application source file contains a destructive database/filesy
 
     assert.deepEqual(offenders, [], `Found destructive operations in application code:\n${offenders.join('\n')}`);
 });
+
+// TEST 15: a MISSING slot file (deleted, not corrupted) while the manifest
+// still references it must recover from the other slot, never create a new
+// empty database.
+test('TEST 15: a missing (deleted) primary slot file recovers from the valid secondary, never creates a new empty database', async () => {
+    const dir = freshDir();
+    const db1 = createDatabase(dir);
+    insertParticipant(db1, 'P_MISSING_FILE');
+    await db1.waitForPendingSync();
+    const activeBefore = db1.getStatus().active;
+
+    // Delete (not corrupt) the primary slot's file entirely.
+    fs.rmSync(path.join(dir, `research.${activeBefore}.sqlite`));
+    for (const ext of ['-wal', '-shm']) {
+        const sidecar = path.join(dir, `research.${activeBefore}.sqlite${ext}`);
+        if (fs.existsSync(sidecar)) fs.rmSync(sidecar);
+    }
+
+    const db2 = createDatabase(dir);
+    assert.deepEqual(participantCodes(db2), ['P_MISSING_FILE'], 'must recover from the still-valid secondary, not silently start empty');
+    assert.notEqual(db2.getStatus().active, activeBefore);
+});
+
+// TEST 16: a corrupt (unparseable) manifest.json, with BOTH slot files
+// still valid and non-empty, must never result in a fresh empty database -
+// per the "empty database must never be preferred, never guess" rule, this
+// is ambiguous-but-recoverable (both slots ARE valid data), not a reason to
+// discard everything and start over.
+test('TEST 16: a corrupt/unparseable manifest.json with two valid non-empty slots recovers data, never creates an empty database', async () => {
+    const dir = freshDir();
+    const db1 = createDatabase(dir);
+    insertParticipant(db1, 'P_BAD_MANIFEST');
+    await db1.waitForPendingSync();
+
+    // Corrupt only the manifest - both slot .sqlite files remain untouched
+    // and fully valid.
+    fs.writeFileSync(path.join(dir, 'manifest.json'), '{ this is not valid json');
+
+    const db2 = createDatabase(dir);
+    assert.deepEqual(participantCodes(db2), ['P_BAD_MANIFEST'], 'data must survive a corrupt manifest when the underlying slot files are still valid');
+
+    // The manifest itself must have been rebuilt into something valid and
+    // parseable (not left corrupt, and not silently ignored).
+    const rebuiltManifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+    assert.ok(rebuiltManifest.active === 'a' || rebuiltManifest.active === 'b');
+});
+
+// TEST 17: an invalid secondary snapshot (simulated by making the snapshot
+// destination briefly unwritable, forcing the VACUUM INTO/rename step to
+// fail) must never replace the existing valid secondary - the old, valid
+// secondary content must survive completely unchanged.
+test('TEST 17: a failed secondary snapshot never replaces the existing valid secondary with a bad one', async () => {
+    const dir = freshDir();
+    const db = createDatabase(dir);
+    insertParticipant(db, 'P_SNAPSHOT_1');
+    await db.waitForPendingSync();
+
+    const secondarySlot = db.getStatus().active === 'a' ? 'b' : 'a';
+    const secondaryPath = path.join(dir, `research.${secondarySlot}.sqlite`);
+    const validSecondaryBytesBefore = fs.readFileSync(secondaryPath);
+
+    // Force the NEXT sync's snapshot-to-temp-file step to fail by making
+    // the directory briefly read-only (VACUUM INTO can't create its temp
+    // file), then confirm the existing, valid secondary is byte-for-byte
+    // unchanged - never partially overwritten.
+    fs.chmodSync(dir, 0o500);
+    try {
+        insertParticipant(db, 'P_SNAPSHOT_2');
+        await db.waitForPendingSync();
+    } finally {
+        fs.chmodSync(dir, 0o700);
+    }
+
+    const secondaryBytesAfter = fs.readFileSync(secondaryPath);
+    assert.equal(Buffer.compare(validSecondaryBytesBefore, secondaryBytesAfter), 0, 'the old valid secondary must be byte-for-byte unchanged after a failed sync attempt');
+
+    // And the primary write itself still succeeded regardless.
+    assert.deepEqual(participantCodes(db), ['P_SNAPSHOT_1', 'P_SNAPSHOT_2']);
+});
+
+// TEST 18: comprehensive identity/relationship preservation across a
+// restart - not just "a participant exists", but every id at every level
+// of the chain, plus transcription/processing-run version history.
+test('TEST 18: participant/session/phase/recording/transcription/processing-run/response IDs and relationships are byte-identical across a restart', async () => {
+    const { createAppContext } = await import('../../app/backend/appContext.js');
+    const { LocalFilesystemAudioStorage } = await import('../../app/backend/storage/audioStorage.js');
+    const { StubTranscriptionProvider } = await import('../../app/backend/transcription/stubProvider.js');
+
+    const dir = freshDir();
+    const audioDir = fs.mkdtempSync(path.join(os.tmpdir(), 'audio-restart-test-'));
+    const db1 = createDatabase(dir);
+    const context1 = createAppContext({ db: db1, audioStorage: new LocalFilesystemAudioStorage({ baseDir: audioDir }), transcriptionProvider: new StubTranscriptionProvider({ text: '944 941 938' }) });
+
+    const participant = await context1.participantRepository.upsertByCode('P_IDENTITY');
+    const session = await context1.sessionRepository.upsertById({ sessionId: 'session-identity', participantId: participant.id });
+    const phase = await context1.phaseRepository.upsert({ sessionId: session.id, phaseId: 'SUBTRACTION_3', subtractionValue: 3, startingNumber: 947 });
+    const storagePath = await context1.audioStorage.save({ sessionId: session.id, phaseRecordId: phase.id, buffer: Buffer.from('identity audio'), extension: 'webm' });
+    const recording = await context1.recordingRepository.insert({ phaseId: phase.id, storagePath, mimeType: 'audio/webm' });
+    const first = await context1.speechProcessingService.process({ recordingId: recording.id, phase, scoringOptions: { scoringMode: 'adaptive', expectedResponseDigits: 3 } });
+    const second = await context1.speechProcessingService.process({ recordingId: recording.id, phase, scoringOptions: { scoringMode: 'adaptive', expectedResponseDigits: 3 } }); // reprocess -> version 2
+    await db1.waitForPendingSync();
+
+    // "Restart": fresh app context, fresh db connection, SAME directory.
+    const db2 = createDatabase(dir);
+    const context2 = createAppContext({ db: db2, audioStorage: new LocalFilesystemAudioStorage({ baseDir: audioDir }), transcriptionProvider: new StubTranscriptionProvider() });
+
+    assert.equal((await context2.participantRepository.getById(participant.id)).id, participant.id);
+    assert.equal((await context2.sessionRepository.getById(session.id)).id, session.id);
+    assert.equal((await context2.phaseRepository.getById(phase.id)).id, phase.id);
+    assert.equal((await context2.recordingRepository.getById(recording.id)).id, recording.id);
+
+    const versions = await context2.transcriptionRepository.listForRecording(recording.id);
+    assert.equal(versions.length, 2, 'both transcription versions must survive the restart');
+    assert.equal(versions[0].id, first.transcription.id);
+    assert.equal(versions[0].version, 1);
+    assert.equal(versions[1].id, second.transcription.id);
+    assert.equal(versions[1].version, 2);
+
+    const runsV2 = await context2.responseRepository.listProcessingRunsForTranscription(versions[1].id);
+    assert.equal(runsV2.length, 1);
+    const responsesV2 = await context2.responseRepository.listResponsesForRun(runsV2[0].id);
+    assert.equal(responsesV2.length, 3);
+
+    // Audio: the file survives the restart at the exact same key, byte-identical.
+    assert.equal(await context2.audioStorage.exists(storagePath), true, 'audio file must remain available after restart');
+    const audioAfter = await context2.audioStorage.read(storagePath);
+    assert.equal(audioAfter.toString(), 'identity audio', 'audio bytes must remain byte-identical after restart');
+    assert.equal((await context2.recordingRepository.getById(recording.id)).storage_path, storagePath, 'the database recording row must still point at the same, still-existing audio file');
+});
+

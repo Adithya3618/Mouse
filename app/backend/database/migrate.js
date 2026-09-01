@@ -22,6 +22,11 @@
 // db.prepare(sql).run/get/all(), identically for either backend).
 
 const path = require('node:path');
+const crypto = require('node:crypto');
+
+function sha256(buffer) {
+    return crypto.createHash('sha256').update(buffer).digest('hex');
+}
 
 // Parent tables before children, so foreign key references are always
 // satisfied on insert.
@@ -133,6 +138,16 @@ async function migrateAudio({ sourceStorage, destinationStorage, destinationDb, 
             const destSize = (await destinationStorage.stat(newKey)).size;
             if (destSize !== buffer.length) {
                 throw new Error(`size mismatch after copy for ${newKey}: source ${buffer.length} bytes, destination ${destSize} bytes`);
+            }
+
+            // Full checksum, not just size - two different files can
+            // coincidentally share a byte length, so size alone doesn't
+            // prove the copy is byte-for-byte correct.
+            const destBuffer = await destinationStorage.read(newKey);
+            const sourceChecksum = sha256(buffer);
+            const destChecksum = sha256(destBuffer);
+            if (sourceChecksum !== destChecksum) {
+                throw new Error(`checksum mismatch after copy for ${newKey}: source sha256 ${sourceChecksum}, destination sha256 ${destChecksum}`);
             }
 
             report.copied += 1;

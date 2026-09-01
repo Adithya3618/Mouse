@@ -120,17 +120,17 @@ ever served through the authenticated, range-supporting
   module; the scoring engine (`speechScoring.js`) is likewise deterministic.
   Neither ever "corrects" a participant's answer toward what was expected.
 
-## Storage architecture: provider-agnostic
+## Storage architecture: host-agnostic
 
 See **[storage-architecture.md](storage-architecture.md)** for the full
-picture: a `ResearchDatabase`/`AudioStorage` interface pair, with SQLite +
-local filesystem for development (unchanged - see
-`app/backend/database/researchDatabase.js`'s primary/secondary design) and
-`PostgresResearchDatabase`/`ObjectStorageAudioStorage` implementations for
-production, selected via `DATABASE_PROVIDER`/`AUDIO_STORAGE_PROVIDER`
-environment variables. Vercel is one deployment target among several this
-architecture supports (a future UF-hosted server is another) - the
-application/experiment code has no awareness of which one is active.
+picture. Production uses the same SQLite primary/secondary system and local
+filesystem audio storage as local development, just pointed at a
+persistent server directory via `DATA_DIR` - not a cloud database or
+object-storage service. A `ResearchDatabase`/`AudioStorage` interface pair
+still exists so a database-backed target (`PostgresResearchDatabase`/
+`ObjectStorageAudioStorage`) remains available if ever needed, but it is
+not part of the chosen production path. The application/experiment code has
+no awareness of which host it's running on.
 
 Nothing else in the application needs to change to make that swap - both
 seams already exist and are the only place these concerns are touched.

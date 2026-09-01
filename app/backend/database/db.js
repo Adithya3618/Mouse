@@ -10,62 +10,37 @@
 // primary/secondary layer - see that file for the full data-safety design
 // (durable manifest, integrity-checked secondary mirror, fail-closed
 // startup recovery). This file is just the thin entry point tests and
-// server.js actually call.
+// config/storageConfig.js actually call.
 //
-// NOT DURABLE on Vercel as deployed today: that platform's filesystem is
-// ephemeral outside /tmp, wiped on every cold start and not shared between
-// concurrent function instances. The primary/secondary machinery still runs
-// there (so a single instance's own writes stay internally consistent), but
-// it cannot survive a redeploy or a different instance handling the next
-// request - see DURABILITY_MODE below and the startup log it produces. Real
-// production durability needs a hosted database, not local/`/tmp` SQLite.
+// This file has NO knowledge of Vercel, `/tmp`, DATA_DIR, or any other
+// hosting-provider or environment-variable concept - see
+// config/storageConfig.js, the one place that resolves a directory and
+// passes it in here explicitly. That is a deliberate separation: this file
+// only knows how to open a database at a path it's given.
 
-const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 const { openResearchDatabase, applySchema } = require('./researchDatabase');
 
-const DEFAULT_DATA_DIR = path.join(__dirname, '../../../data/db');
-
-// process.env.VERCEL is set to '1' by the platform on every deployment
-// (build and runtime) - used only to pick /tmp and to label the
-// non-durable status honestly, never to change any query/write behavior.
-const VERCEL_FALLBACK_DATA_DIR = '/tmp/mouse-research-db';
-
-function resolveDataDir(override) {
-    if (override) {
-        return override;
-    }
-    if (process.env.DB_PATH) {
-        return process.env.DB_PATH;
-    }
-    return process.env.VERCEL ? VERCEL_FALLBACK_DATA_DIR : DEFAULT_DATA_DIR;
-}
-
-function durabilityMode(dataDir) {
-    if (process.env.VERCEL && !process.env.DB_PATH) {
-        return 'EPHEMERAL_TMP - NOT durable across deploys/restarts/instances. See app/backend/database/db.js header.';
-    }
-    return `PERSISTENT_LOCAL - ${dataDir}`;
-}
-
-// dbPath ':memory:' -> isolated, disposable single-connection database (no
+// dataDir ':memory:' -> isolated, disposable single-connection database (no
 // primary/secondary machinery - there is nothing to protect, the whole
 // point is that it disappears when the process exits). Used only by the
 // test suite so each test file gets its own connection with no shared
-// state. Any other value is treated as the DATA DIRECTORY for the
-// primary/secondary layer (this is a deliberate, documented change from the
-// old single-file-path meaning - nothing currently sets DB_PATH, so nothing
-// depended on the old meaning; see .env.example).
-function createDatabase(dbPathOrDataDir) {
-    if (dbPathOrDataDir === ':memory:') {
+// state. Any other value is the DATA DIRECTORY for the primary/secondary
+// layer, and is REQUIRED - there is no default location here (see
+// config/storageConfig.js for where the actual default/DATA_DIR resolution
+// happens).
+function createDatabase(dataDir) {
+    if (dataDir === ':memory:') {
         const db = new DatabaseSync(':memory:');
         applySchema(db);
         return db;
     }
+    if (!dataDir) {
+        throw new Error('createDatabase() requires an explicit data directory (or \':memory:\') - see config/storageConfig.js for path resolution.');
+    }
 
-    const dataDir = resolveDataDir(dbPathOrDataDir);
     const { db, getStatus } = openResearchDatabase({ dataDir, logger: console.log });
-    console.log(`[database] Durability mode: ${durabilityMode(dataDir)}`);
+    console.log(`[database] Persistent storage: ${dataDir}`);
     // `db` already has its own waitForPendingSync() (see
     // researchDatabase.js's wrapWithSecondarySync) - only getStatus() needs
     // attaching here, since it's returned alongside `db` rather than on it.
@@ -73,17 +48,27 @@ function createDatabase(dbPathOrDataDir) {
     return db;
 }
 
-// Lazily-created singleton for the running server process (app/backend/server.js).
+// Lazily-created, per-directory singleton cache - a defensive safety net
+// against ever accidentally opening the SAME on-disk database twice within
+// one process (which would mean two independent primary/secondary
+// machinery instances fighting over the same files), while still allowing
+// legitimately different directories to each get their own independent
+// connection within one process - the normal case in tests (many temp
+// directories in one test file/process) and harmless in a real server
+// (which only ever resolves one directory for its whole lifetime anyway).
 // Route/service code should receive a db instance via constructor injection
-// (see repositories) rather than importing this singleton directly, so tests
+// (see repositories) rather than importing this cache directly, so tests
 // can supply their own isolated ':memory:' database instead.
-let singleton = null;
+const instances = new Map();
 
-function getDb() {
-    if (!singleton) {
-        singleton = createDatabase();
+function getDb(dataDir) {
+    if (!dataDir) {
+        throw new Error('getDb() requires an explicit data directory - see config/storageConfig.js.');
     }
-    return singleton;
+    if (!instances.has(dataDir)) {
+        instances.set(dataDir, createDatabase(dataDir));
+    }
+    return instances.get(dataDir);
 }
 
 module.exports = { createDatabase, getDb };
