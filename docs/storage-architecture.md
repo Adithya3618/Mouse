@@ -219,3 +219,49 @@ No changes to `experimentController.js`, `mouseTask.js`, any cognitive-
 task/scoring/transcription logic, the admin dashboard, the frontend, or any
 repository's public method - the entire experiment is unaware storage
 moved.
+
+## Temporary period: Vercel frontend + tunneled local backend
+
+Before the UF server is available, the frontend can be hosted on Vercel
+while the actual backend (and its persistent storage) runs on a local
+machine, exposed through a secure tunnel (ngrok, Cloudflare Tunnel,
+Tailscale Funnel, or similar):
+
+```
+Browser → Vercel (api/frontend.js, static files only) → tunnel → local `npm start` (DATA_DIR=./data)
+```
+
+**`api/frontend.js`** is a separate, minimal Vercel entry point (routed to
+by `vercel.json`) that serves *only* static files - it never requires
+`appContext.js`/`storageConfig.js`/any repository, so it has no code path
+capable of touching research data, and therefore never hits the
+`NODE_ENV=production` storage guard at all. `api/index.js` (the full
+backend) is left in place, unused by `vercel.json` for now, in case a
+future target can give a Vercel-style function real persistent storage.
+
+**`app/frontend/js/config/apiBaseUrl.js`** is the one place the frontend
+decides where the backend lives. Every API call in the frontend
+(`adminApi.js`, `sessionData.js`, `resultsScreen.js`,
+`recordingUploadService.js`) goes through `buildApiUrl(path)`, which
+returns `path` unchanged (same-origin - the normal case) unless a base URL
+has been configured. Visiting the Vercel frontend once with
+`?apiBase=https://your-tunnel-url` sets it (persisted in `localStorage` -
+it's a URL, not a secret) for every future visit; clearing it reverts to
+same-origin. `/config/experimentConfig.js` and `/config/mouseTaskConfig.js`
+need no such handling - they're plain configuration, not participant data,
+and Vercel serves its own copy of them directly (via `api/frontend.js`),
+so those imports stay ordinary same-origin `import` statements.
+
+Because the tunneled backend is a different origin from the Vercel
+frontend, `app/backend/server.js` includes a small CORS middleware
+(reflects the request's `Origin`, allows `GET/POST/OPTIONS` and the
+`Authorization`/`Content-Type`/`Range` headers) - inert for the normal
+same-origin case (`npm start`, or the eventual UF deployment serving
+frontend and backend together), and does not weaken admin authentication
+(the bearer token is still required and checked exactly as before; CORS
+only controls whether a *browser* is allowed to read the response, not
+whether the server accepts the request).
+
+Moving off the tunnel later - either back to same-origin, or to the UF
+server - is a one-line change: update (or clear) the configured
+`apiBase`. No frontend code changes.

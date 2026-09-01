@@ -24,6 +24,31 @@ const { adminAuth } = require('./routes/adminAuth');
 
 const app = express();
 
+// CORS: only relevant for the temporary period where a Vercel-hosted
+// frontend (see api/frontend.js) reaches this backend from a different
+// origin (this server, exposed through a secure tunnel - see
+// docs/storage-architecture.md and app/frontend/js/config/apiBaseUrl.js).
+// When this server itself also serves the frontend (the normal case -
+// `npm start`, or a future UF deployment), requests are same-origin and
+// these headers are simply unused by the browser. Reflects the request's
+// own Origin rather than "*" so credentials-free requests still work
+// correctly from any configured frontend origin; no cookies are ever used
+// (the admin token travels only via the Authorization header), so there is
+// no CSRF/credential exposure risk in reflecting the origin here.
+app.use((req, res, next) => {
+    if (req.headers.origin) {
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Range');
+    }
+    if (req.method === 'OPTIONS') {
+        res.sendStatus(204);
+        return;
+    }
+    next();
+});
+
 // Serve the frontend as static files.
 app.use(express.static(path.join(__dirname, '../frontend')));
 

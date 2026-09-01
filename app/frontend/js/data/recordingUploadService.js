@@ -8,6 +8,8 @@
 // data/sessionData.js#saveScoreToServer's existing style) so
 // cognitiveAudioSession.js never talks to `fetch`/FormData directly.
 
+import { buildApiUrl } from '../config/apiBaseUrl.js';
+
 export async function uploadRecording({
     blob,
     mimeType,
@@ -42,7 +44,7 @@ export async function uploadRecording({
     if (expectedResponseDigits != null) formData.append('expectedResponseDigits', String(expectedResponseDigits));
     if (scoringMode) formData.append('scoringMode', scoringMode);
 
-    const response = await fetchImpl('/api/recordings', { method: 'POST', body: formData });
+    const response = await fetchImpl(buildApiUrl('/api/recordings'), { method: 'POST', body: formData });
     if (!response.ok) {
         throw new Error(`Recording upload failed with status ${response.status}`);
     }

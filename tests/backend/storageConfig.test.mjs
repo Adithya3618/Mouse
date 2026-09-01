@@ -10,6 +10,20 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 
+// A handful of tests need a directory that genuinely is NOT under /tmp or
+// /var/tmp, to simulate "a real persistent server path" now that the
+// ephemeral-path guard correctly rejects those - os.tmpdir() resolves to
+// /tmp on Linux, so it can't be used for that here (see the tests using
+// this below). Created under the project's own gitignored tmp/ directory
+// (a relative path prefixed with the project root, e.g.
+// /home/.../Mouse/tmp/... - this does NOT start with the absolute "/tmp"
+// prefix the guard checks for) and cleaned up immediately after use.
+function nonEphemeralScratchDir(prefix) {
+    const root = path.join(import.meta.dirname, '../../tmp');
+    fs.mkdirSync(root, { recursive: true });
+    return fs.mkdtempSync(path.join(root, prefix));
+}
+
 function withEnv(vars, fn) {
     const previous = {};
     for (const key of Object.keys(vars)) {
@@ -172,10 +186,14 @@ test('REGRESSION: NODE_ENV=production with DATABASE_PROVIDER=sqlite explicitly s
 
 test('NODE_ENV=production with DATABASE_PROVIDER=sqlite AND an explicit DATA_DIR passes the guard (real persistent path confirmed)', async () => {
     const { createResearchDatabase } = await import('../../app/backend/config/storageConfig.js');
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-config-prod-datadir-'));
-    withEnv({ NODE_ENV: 'production', DATABASE_PROVIDER: 'sqlite', DATA_DIR: root, DB_PATH: undefined }, () => {
-        assert.doesNotThrow(() => createResearchDatabase({ logger: () => {} }));
-    });
+    const root = nonEphemeralScratchDir('storage-config-prod-datadir-');
+    try {
+        withEnv({ NODE_ENV: 'production', DATABASE_PROVIDER: 'sqlite', DATA_DIR: root, DB_PATH: undefined }, () => {
+            assert.doesNotThrow(() => createResearchDatabase({ logger: () => {} }));
+        });
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
 });
 
 test('NODE_ENV=production with DATABASE_PROVIDER=postgres and a DATABASE_URL passes the guard (no ephemeral fallback occurs)', async () => {
@@ -199,10 +217,14 @@ test('REGRESSION: NODE_ENV=production with AUDIO_STORAGE_PROVIDER=local (default
 
 test('NODE_ENV=production with AUDIO_STORAGE_PROVIDER=local AND an explicit DATA_DIR passes the guard', async () => {
     const { createAudioStorage } = await import('../../app/backend/config/storageConfig.js');
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'storage-config-prod-audio-datadir-'));
-    withEnv({ NODE_ENV: 'production', AUDIO_STORAGE_PROVIDER: 'local', DATA_DIR: root, AUDIO_STORAGE_DIR: undefined }, () => {
-        assert.doesNotThrow(() => createAudioStorage({ logger: () => {} }));
-    });
+    const root = nonEphemeralScratchDir('storage-config-prod-audio-datadir-');
+    try {
+        withEnv({ NODE_ENV: 'production', AUDIO_STORAGE_PROVIDER: 'local', DATA_DIR: root, AUDIO_STORAGE_DIR: undefined }, () => {
+            assert.doesNotThrow(() => createAudioStorage({ logger: () => {} }));
+        });
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
 });
 
 test('without NODE_ENV=production, DATABASE_PROVIDER=sqlite / AUDIO_STORAGE_PROVIDER=local with no DATA_DIR are unaffected by the guard (local dev untouched)', async () => {
@@ -212,6 +234,71 @@ test('without NODE_ENV=production, DATABASE_PROVIDER=sqlite / AUDIO_STORAGE_PROV
     withEnv({ NODE_ENV: undefined, DATABASE_PROVIDER: 'sqlite', DB_PATH: dbDir, AUDIO_STORAGE_PROVIDER: 'local', AUDIO_STORAGE_DIR: audioDir }, () => {
         assert.doesNotThrow(() => createResearchDatabase({ logger: () => {} }));
         assert.doesNotThrow(() => createAudioStorage({ logger: () => {} }));
+    });
+});
+
+// --- Known-ephemeral-path rejection: DATA_DIR/DB_PATH/AUDIO_STORAGE_DIR
+// being SET is not enough in production - the configured path itself must
+// not be a location Linux typically clears on reboot/restart.
+
+test('REGRESSION: NODE_ENV=production with DATA_DIR=/tmp/... is rejected even though DATA_DIR is technically "configured"', async () => {
+    const { createResearchDatabase } = await import('../../app/backend/config/storageConfig.js');
+    withEnv({ NODE_ENV: 'production', DATABASE_PROVIDER: 'sqlite', DATA_DIR: '/tmp/mouse-research-data', DB_PATH: undefined }, () => {
+        assert.throws(
+            () => createResearchDatabase({ logger: () => {} }),
+            /known-ephemeral/
+        );
+    });
+});
+
+test('REGRESSION: NODE_ENV=production with DB_PATH=/tmp/... is rejected (the more specific override is checked too, not just DATA_DIR)', async () => {
+    const { createResearchDatabase } = await import('../../app/backend/config/storageConfig.js');
+    withEnv({ NODE_ENV: 'production', DATABASE_PROVIDER: 'sqlite', DATA_DIR: undefined, DB_PATH: '/tmp/db' }, () => {
+        assert.throws(
+            () => createResearchDatabase({ logger: () => {} }),
+            /known-ephemeral/
+        );
+    });
+});
+
+test('REGRESSION: NODE_ENV=production with DATA_DIR=/var/tmp/... is rejected for audio storage too', async () => {
+    const { createAudioStorage } = await import('../../app/backend/config/storageConfig.js');
+    withEnv({ NODE_ENV: 'production', AUDIO_STORAGE_PROVIDER: 'local', DATA_DIR: '/var/tmp/mouse-research-data', AUDIO_STORAGE_DIR: undefined }, () => {
+        assert.throws(
+            () => createAudioStorage({ logger: () => {} }),
+            /known-ephemeral/
+        );
+    });
+});
+
+test('NODE_ENV=production with DATA_DIR=/var/lib/mouse-research (a real persistent-style path) is accepted by the ephemeral-path check', async () => {
+    // Confirms the check is specific to /tmp and /var/tmp, not an overly
+    // broad rejection of every absolute path - a real persistent server
+    // directory must pass. (This may still fail for an unrelated reason -
+    // e.g. no permission to create /var/lib/mouse-research in this
+    // sandbox - so this test only asserts the failure, if any, is NOT the
+    // ephemeral-path rejection.)
+    const { createResearchDatabase } = await import('../../app/backend/config/storageConfig.js');
+    withEnv({ NODE_ENV: 'production', DATABASE_PROVIDER: 'sqlite', DATA_DIR: '/var/lib/mouse-research', DB_PATH: undefined }, () => {
+        try {
+            createResearchDatabase({ logger: () => {} });
+        } catch (error) {
+            assert.ok(!/known-ephemeral/.test(error.message), `must not be rejected as ephemeral: ${error.message}`);
+        }
+    });
+});
+
+test('a path that merely STARTS WITH the string "/tmp" but is not actually inside the /tmp directory is NOT falsely rejected (e.g. /tmpfoo-data)', async () => {
+    const { createResearchDatabase } = await import('../../app/backend/config/storageConfig.js');
+    // "/tmpfoo-data" starts with the four characters "/tmp" but is a
+    // sibling of /tmp, not a path inside it - naive string-prefix matching
+    // (rather than path-segment-aware matching) would wrongly reject this.
+    withEnv({ NODE_ENV: 'production', DATABASE_PROVIDER: 'sqlite', DATA_DIR: undefined, DB_PATH: '/tmpfoo-data/db' }, () => {
+        try {
+            createResearchDatabase({ logger: () => {} });
+        } catch (error) {
+            assert.ok(!/known-ephemeral/.test(error.message), `"/tmpfoo-data" must not be rejected as ephemeral (it is not inside /tmp): ${error.message}`);
+        }
     });
 });
 

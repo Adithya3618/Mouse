@@ -78,6 +78,34 @@ function wasAudioPathExplicitlyConfigured() {
     return Boolean(process.env.AUDIO_STORAGE_DIR || process.env.DATA_DIR);
 }
 
+// Known-ephemeral filesystem locations, rejected as the AUTHORITATIVE
+// research-data path in production even when explicitly configured -
+// someone typo-ing or copy-pasting DATA_DIR=/tmp/mouse-data must not slip
+// past the "was something configured?" check above, since /tmp (and
+// /var/tmp, its traditional counterpart) is ephemeral on effectively every
+// Linux deployment target, not just serverless ones. Checked only against
+// the resolved research-data path itself - never against unrelated
+// directories the process might otherwise touch (logs, temp files for
+// something else, etc.).
+const KNOWN_EPHEMERAL_PREFIXES = ['/tmp', '/var/tmp'];
+
+function isKnownEphemeralPath(resolvedPath) {
+    const normalized = path.resolve(resolvedPath);
+    return KNOWN_EPHEMERAL_PREFIXES.some((prefix) => normalized === prefix || normalized.startsWith(`${prefix}${path.sep}`));
+}
+
+function assertNotEphemeralPath(resolvedPath, { what }) {
+    if (isProductionEnv() && isKnownEphemeralPath(resolvedPath)) {
+        throw new Error(
+            `Persistent research ${what} storage is not configured. "${resolvedPath}" is a known-ephemeral filesystem ` +
+            `location (${KNOWN_EPHEMERAL_PREFIXES.join(', ')} are typically cleared on reboot/restart on Linux) and ` +
+            `must never be used as the authoritative research-data path in production. Set DATA_DIR (or the more ` +
+            `specific ${what === 'database' ? 'DB_PATH' : 'AUDIO_STORAGE_DIR'}) to a real, persistent filesystem ` +
+            `directory on this server instead.`
+        );
+    }
+}
+
 // Returns a ResearchDatabase-conformant object (see
 // database/researchDatabaseContract.js). 'sqlite' delegates straight to the
 // existing, unmodified local primary/secondary system (db.js/
@@ -94,7 +122,9 @@ function createResearchDatabase({ logger = console.log } = {}) {
                 'DATABASE_PROVIDER=postgres with DATABASE_URL instead.'
             );
         }
-        return getDb(resolveDbDir());
+        const dbDir = resolveDbDir();
+        assertNotEphemeralPath(dbDir, { what: 'database' });
+        return getDb(dbDir);
     }
 
     if (provider === 'postgres') {
@@ -126,7 +156,9 @@ function createAudioStorage({ logger = console.log } = {}) {
                 'more specific AUDIO_STORAGE_DIR) to a real, persistent filesystem directory on this server.'
             );
         }
-        return new LocalFilesystemAudioStorage({ baseDir: resolveAudioDir(), logger });
+        const audioDir = resolveAudioDir();
+        assertNotEphemeralPath(audioDir, { what: 'audio' });
+        return new LocalFilesystemAudioStorage({ baseDir: audioDir, logger });
     }
 
     if (provider === 'object') {

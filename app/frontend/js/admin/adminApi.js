@@ -5,6 +5,8 @@
 // written to disk) - it is cleared automatically when the browser tab
 // closes, and cleared explicitly here the moment the server rejects it.
 
+import { buildApiUrl } from '../config/apiBaseUrl.js';
+
 const TOKEN_STORAGE_KEY = 'mouseAdminApiToken';
 
 function getStoredToken() {
@@ -80,7 +82,7 @@ export async function fetchAudioObjectUrl(recordingId) {
 }
 
 async function doFetch(path, options, token) {
-    return fetch(path, {
+    return fetch(buildApiUrl(path), {
         ...options,
         headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` }
     });

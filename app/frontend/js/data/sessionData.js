@@ -1,4 +1,5 @@
 import { calculateAccuracy, calculateTargetEfficiency } from '../mouse/scoring.js';
+import { buildApiUrl } from '../config/apiBaseUrl.js';
 
 // --- Motor-Cognitive Dual-Task research session data model -----------
 //
@@ -140,7 +141,7 @@ export function buildScorePayload(state) {
 }
 
 export async function saveScoreToServer(payload) {
-    const response = await fetch('/saveScore', {
+    const response = await fetch(buildApiUrl('/saveScore'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

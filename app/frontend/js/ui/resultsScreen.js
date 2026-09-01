@@ -8,6 +8,7 @@
 
 import { getExperimentController } from '../experiment/experimentRuntime.js';
 import { formatPercentage, formatSessionForExport } from '../data/dataFormatter.js';
+import { buildApiUrl } from '../config/apiBaseUrl.js';
 
 const MOUSE_CONDITION_ORDER = ['MOTOR_BASELINE', 'DUAL_TASK_3', 'DUAL_TASK_7', 'DUAL_TASK_17'];
 
@@ -169,7 +170,7 @@ async function downloadExcelResults() {
     setExportStatus('Preparing your download…', false);
 
     try {
-        const response = await fetch('/exportSessionResults', {
+        const response = await fetch(buildApiUrl('/exportSessionResults'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formatSessionForExport(session))
