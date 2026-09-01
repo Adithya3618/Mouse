@@ -11,16 +11,16 @@
 
 export const experimentConfig = {
     // 2-minute motor-only mouse baseline at the start of the experiment.
-    motorBaselineDurationSeconds: 20,
+    motorBaselineDurationSeconds: 120,
 
     // The three serial-subtraction conditions, in the order they run.
     subtractionValues: [3, 7, 17],
 
     // 2-minute subtraction-only block for each condition (no mouse task).
-    subtractionOnlyDurationSeconds: 20,
+    subtractionOnlyDurationSeconds: 120,
 
     // 2-minute combined subtraction + mouse block for each condition.
-    dualTaskDurationSeconds: 20,
+    dualTaskDurationSeconds: 90,
 
     // 90-second recovery break after EVERY task - motor baseline, each
     // subtraction-only block, and each dual-task block. There is no
