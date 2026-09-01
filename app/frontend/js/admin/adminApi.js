@@ -5,7 +5,7 @@
 // written to disk) - it is cleared automatically when the browser tab
 // closes, and cleared explicitly here the moment the server rejects it.
 
-import { buildApiUrl } from '../config/apiBaseUrl.js';
+import { buildApiUrl, getApiBaseUrl } from '../config/apiBaseUrl.js';
 
 const TOKEN_STORAGE_KEY = 'mouseAdminApiToken';
 
@@ -61,6 +61,23 @@ export async function adminFetch(path, options = {}) {
     if (response.status === 503) {
         throw new Error('The admin API is not configured on this server (ADMIN_API_TOKEN is unset). See .env.example.');
     }
+    if (response.status === 404 && !getApiBaseUrl() && !isJsonResponse(response)) {
+        // A same-origin 404 that ISN'T JSON is not our backend answering
+        // "not found" (see routes/admin.js, which always responds
+        // res.status(404).json({...}) - that case is deliberately left to
+        // fall through to the generic handling below, unchanged, so
+        // "participant not found" still shows correctly). This is instead
+        // Express's own default "Cannot GET ..." HTML page, meaning there
+        // is no backend at all at this page's own origin - e.g. this page
+        // is served by api/frontend.js on Vercel (frontend-only by design -
+        // see docs/storage-architecture.md), and no ?apiBase=<url> has been
+        // configured yet to point it at the real one.
+        throw new Error(
+            `No backend reachable at this page's own origin for ${path}. If the backend runs elsewhere ` +
+            `(a local/tunneled server, or a separate UF deployment), reload this page with ` +
+            `?apiBase=<your-backend-url> added to the URL once - it will be remembered for future visits.`
+        );
+    }
     if (!response.ok) {
         const body = await safeReadText(response);
         throw new Error(`Request to ${path} failed (${response.status}): ${body || response.statusText}`);
@@ -86,6 +103,10 @@ async function doFetch(path, options, token) {
         ...options,
         headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` }
     });
+}
+
+function isJsonResponse(response) {
+    return (response.headers.get('content-type') || '').includes('application/json');
 }
 
 async function safeReadText(response) {
