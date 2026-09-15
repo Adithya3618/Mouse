@@ -10,31 +10,66 @@
 // `require()`, since this file is not CommonJS.
 
 export const experimentConfig = {
-    // 2-minute motor-only mouse baseline at the start of the experiment.
-    motorBaselineDurationSeconds: 120,
+    // Clicking-only mouse baseline at the start of the experiment
+    // ("Clicking Only" on screen; MOTOR_BASELINE internally).
+    motorBaselineDurationSeconds: 10,
 
     // The three serial-subtraction conditions, in the order they run.
     subtractionValues: [3, 7, 17],
 
-    // 2-minute subtraction-only block for each condition (no mouse task).
-    subtractionOnlyDurationSeconds: 120,
+    // Counting-only hold screen for each condition (no mouse task) -
+    // "Count Back by N" on screen; SUBTRACTION_<n> internally.
+    subtractionOnlyDurationSeconds: 10,
 
-    // 2-minute combined subtraction + mouse block for each condition.
-    dualTaskDurationSeconds: 90,
+    // Combined counting + clicking block for each condition -
+    // "Count Back by N and Clicking" on screen; DUAL_TASK_<n> internally.
+    dualTaskDurationSeconds: 10,
 
-    // 90-second recovery break after EVERY task - motor baseline, each
-    // subtraction-only block, and each dual-task block. There is no
-    // separate "transition" phase anymore; the recovery period after a
-    // subtraction-only block is what precedes that condition's dual-task
-    // block.
+    // REST break after every count-back-only block and every dual-task
+    // block (RECOVERY_AFTER_DUAL_3/_7). There is no separate recovery
+    // between a condition's count-back-only block and its own dual-task
+    // block (they are joined instead by dualTaskTransitionSeconds below).
+    // RECOVERY_AFTER_MOTOR (after clicking-only) uses its own dedicated
+    // pair of durations instead - see the two fields directly below.
     recoveryDurationSeconds: 10,
 
-    // Length of the "3, 2, 1" countdown shown immediately before EVERY
-    // active 2-minute task (motor baseline, each subtraction-only block,
-    // each dual-task block). This time is separate from and NOT included
-    // in that task's own duration above - see
-    // experiment/conditions.js#buildPreparationMetadata.
-    preTaskCountdownSeconds: 3,
+    // RECOVERY_AFTER_MOTOR (the REST before series 1) is split across two
+    // screens: the REST explanation itself, then RECOVERY_AFTER_MOTOR_INFO -
+    // a second timed screen carrying the count-back-only -> dual-task
+    // transition procedure, with its own running timer, that auto-advances
+    // on its own (no Continue-button gate). These two together are a
+    // deliberate 60-second combined budget for the pair - adjust either
+    // value to change the split without changing the 60s total.
+    recoveryAfterMotorDurationSeconds: 10,
+    recoveryAfterMotorInfoDurationSeconds: 10,
+
+    // Length of the digit countdown (10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 - see
+    // ui/phaseCopy.js/ui/experimentScreen.js) shown immediately before the
+    // clicking-only task, and ONLY before it - every other active task
+    // (count-back-only, dual-task) is instead preceded by its own
+    // "transition" screen (see preCountingTransitionSeconds/
+    // dualTaskTransitionSeconds below), not a digit countdown. This time is
+    // separate from and NOT included in the clicking-only task's own
+    // duration above. Must match MOTOR_COUNTDOWN_SEQUENCE.length
+    // (ui/phaseCopy.js).
+    motorBaselineCountdownSeconds: 11,
+
+    // PREPARE_SUBTRACTION_<n>: the screen shown before each condition's
+    // count-back-only block, explaining what's about to happen. Its second
+    // line (revealing the actual starting-number prompt) appears only in
+    // the final preCountingTransitionRevealSeconds of this duration - see
+    // ui/phaseCopy.js/ui/experimentScreen.js.
+    preCountingTransitionSeconds: 10,
+    preCountingTransitionRevealSeconds: 10,
+
+    // PREPARE_DUAL_TASK_<n>: the screen shown between a condition's
+    // count-back-only block and its dual-task block, telling the
+    // participant to keep counting while the mouse task starts. Its final
+    // 3 seconds show a popping 3/2/1 (same treatment as
+    // preCountingTransitionSeconds's own pop countdown - see
+    // ui/experimentScreen.js#updatePopCountdown), not a separate
+    // configurable reveal point.
+    dualTaskTransitionSeconds: 10,
 
     // Range for the random number each subtraction condition counts down
     // from. A new number is drawn per condition and must differ from the

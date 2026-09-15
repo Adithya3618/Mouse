@@ -46,7 +46,7 @@
 
 .speech-panel.is-recording .recording-status::before {
   content: '● ';
-  color: #C0392B;
+  color: var(--ink);
 }
 
 .recording-timer {
@@ -66,7 +66,8 @@
 .speech-error {
   margin: 12px 0 0 0;
   font-size: 13px;
-  color: #B3261E;
+  font-weight: 600;
+  color: var(--ink);
 }
 
 @keyframes recording-pulse {

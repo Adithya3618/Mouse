@@ -21,3 +21,355 @@
 .instructions-body .protocol-total{
   font-weight:600;
 }
+
+/* ---- Instructions page: two-column guided walkthrough ----
+   One shared bordered container; LEFT (.instructions-timeline) is a
+   fixed-width, display-only, numbered 10-step list (reusing the app's
+   existing .phase-list/.phase/.phase-row markup - see css/intake.css -
+   just with a bigger marker + number added here); RIGHT
+   (.instructions-detail) takes the remaining width, divided from the left
+   by a single vertical rule, and shows exactly one step's detail at a
+   time (see js/ui/instructionsScreen.js). Grayscale only throughout -
+   var(--ink)/--slate/--line/--off are already B&W app-wide (see
+   css/intake.css's :root). */
+/* This screen's own content is wider than the shared .wrap ceiling used by
+   the intake wizard and other screens (see css/intake.css's .wrap comment)
+   - a two-column walkthrough has room to use more of a large desktop
+   viewport before it needs to wrap/shrink. Scoped by #screen-instructions
+   so intake/experiment/results keep their existing .wrap width exactly as
+   before. */
+#screen-instructions .wrap{
+  max-width:min(90vw, 1400px);
+}
+
+.instructions-columns{
+  position:relative;
+  display:flex;
+  align-items:stretch;
+  border:1px solid var(--line);
+  border-radius:10px;
+  overflow:hidden;
+  background:var(--paper);
+}
+
+/* Small, muted shortcut past the whole preview walkthrough - deliberately
+   understated (no border/background, quiet gray text) so it never competes
+   with the primary black Continue button. */
+.instructions-skip{
+  position:absolute;
+  right:20px;
+  bottom:16px;
+  background:none;
+  border:none;
+  padding:4px;
+  font-family:'IBM Plex Sans',sans-serif;
+  font-size:13px;
+  color:var(--slate);
+  cursor:pointer;
+}
+.instructions-skip:hover,
+.instructions-skip:focus-visible{
+  color:var(--ink);
+  text-decoration:underline;
+}
+.instructions-skip .arrow{
+  margin-left:2px;
+}
+
+.instructions-timeline{
+  flex:0 0 380px;
+  width:380px;
+  padding:40px 32px;
+  border-right:1px solid var(--line);
+}
+.instructions-timeline h1{
+  font-size:32px;
+  margin:0 0 6px 0;
+}
+.instructions-timeline .subhead{
+  margin:0 0 32px 0;
+  font-size:15px;
+}
+
+.instructions-detail{
+  flex:1;
+  min-width:0;
+  padding:40px 44px 44px;
+}
+
+/* Numbered rows + bigger markers (the base .phase-list/.phase from
+   css/intake.css already provides the connecting line and dot). Sizes
+   below are fixed rather than css/intake.css's small clamp() minimums,
+   since this page's own two-column layout has the room for larger, more
+   legible text than the shared intake summary panel does. */
+#instructionsPhaseList{
+  counter-reset:instructions-step;
+}
+#instructionsPhaseList .phase-name::before{
+  counter-increment:instructions-step;
+  content:counter(instructions-step) ". ";
+}
+#instructionsPhaseList .phase{
+  padding-bottom:24px;
+}
+#instructionsPhaseList .phase-name{
+  font-size:16px;
+  font-weight:500;
+}
+#instructionsPhaseList .phase-time{
+  font-size:14px;
+}
+#instructionsPhaseList::before{
+  background:var(--slate);
+}
+#instructionsPhaseList .phase::before{
+  width:14px;
+  height:14px;
+  left:-21px;
+  top:2px;
+}
+/* Neutralize css/intake.css's .phase.dual accenting (used by the separate
+   #screen-intake summary panel that shares this markup pattern) - here,
+   dot fill communicates only "active", never task type, and every row's
+   name stays the same weight. */
+#instructionsPhaseList .phase.dual::before{
+  background:var(--panel);
+  border-color:var(--slate);
+}
+#instructionsPhaseList .phase.dual .phase-name{
+  font-weight:500;
+}
+
+/* The one active step - grayscale emphasis only (bold, light-gray fill,
+   black border), never color. */
+.phase.active{
+  background:var(--off);
+  border:1px solid var(--ink);
+  border-radius:4px;
+  padding:10px 12px;
+  margin:-10px -12px 14px -12px;
+}
+#instructionsPhaseList .phase.active::before{
+  background:var(--ink);
+  border-color:var(--ink);
+}
+.phase.active .phase-name{font-weight:700;}
+
+.instructions-detail-step{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:13px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:var(--slate);
+  margin:0 0 12px 0;
+}
+.instructions-detail-title{
+  display:flex;
+  align-items:baseline;
+  flex-wrap:wrap;
+  gap:14px;
+  font-size:clamp(30px, 3vw, 46px);
+  font-weight:700;
+  letter-spacing:-0.01em;
+  text-transform:uppercase;
+  margin:0 0 18px 0;
+  color:var(--ink);
+}
+.instructions-detail-duration{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:17px;
+  font-weight:400;
+  text-transform:none;
+  color:var(--slate);
+}
+.instructions-detail-intro{
+  font-size:18px;
+  line-height:1.6;
+  color:var(--ink);
+  max-width:640px;
+  margin:0 0 26px 0;
+}
+
+/* The bordered box holding the bullets (+ illustration, when the step
+   involves clicking). */
+.instructions-detail-box{
+  display:flex;
+  align-items:flex-start;
+  gap:36px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:32px;
+  margin:0 0 28px 0;
+}
+.instructions-bullets{
+  flex:1;
+  min-width:0;
+  margin:0;
+  padding-left:1.1em;
+  font-size:18px;
+  line-height:1.65;
+  color:var(--ink);
+}
+.instructions-bullets li{
+  margin-bottom:16px;
+}
+.instructions-bullets li:last-child{
+  margin-bottom:0;
+}
+
+/* Small illustrative preview of the dot-clicking task - plain CSS shapes,
+   no image asset. Purely decorative on this preview page; see this
+   element's own comment in index.html. */
+.instructions-illustration{
+  position:relative;
+  flex:0 0 260px;
+  width:260px;
+  height:210px;
+  border:1px solid var(--line);
+  border-radius:6px;
+  background:var(--panel);
+}
+.illus-dot{
+  position:absolute;
+  border-radius:50%;
+  background:var(--off);
+  border:1.5px solid var(--slate);
+}
+.illus-dot--pop{
+  width:32px;
+  height:32px;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  background:var(--ink);
+  border-color:var(--ink);
+}
+.illus-dot--a{
+  width:15px;
+  height:15px;
+  top:22px;
+  right:26px;
+}
+.illus-dot--b{
+  width:13px;
+  height:13px;
+  bottom:20px;
+  left:24px;
+}
+.illus-dot--c{
+  width:12px;
+  height:12px;
+  bottom:24px;
+  right:30px;
+}
+/* Six short rays radiating from the "clicked" dot, evenly spaced 60deg
+   apart - a plain-CSS stand-in for a click/pop burst. */
+.illus-tick{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:2px;
+  height:9px;
+  border-radius:1px;
+  background:var(--slate);
+  transform-origin:50% 27px;
+}
+.illus-tick--1{transform:translate(-50%,-50%) rotate(0deg) translateY(-27px);}
+.illus-tick--2{transform:translate(-50%,-50%) rotate(60deg) translateY(-27px);}
+.illus-tick--3{transform:translate(-50%,-50%) rotate(120deg) translateY(-27px);}
+.illus-tick--4{transform:translate(-50%,-50%) rotate(180deg) translateY(-27px);}
+.illus-tick--5{transform:translate(-50%,-50%) rotate(240deg) translateY(-27px);}
+.illus-tick--6{transform:translate(-50%,-50%) rotate(300deg) translateY(-27px);}
+
+/* A solid CSS cursor-arrow shape, pointing at the filled ("clicked") dot. */
+.illus-cursor{
+  position:absolute;
+  left:57%;
+  top:55%;
+  width:22px;
+  height:26px;
+  background:var(--ink);
+  clip-path:polygon(0 0, 0 76%, 22% 60%, 38% 100%, 52% 92%, 36% 56%, 68% 56%);
+  transform:rotate(-8deg);
+}
+
+.instructions-audio{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  max-width:640px;
+  margin:0 0 14px 0;
+  padding:20px 24px;
+  border:1px solid var(--line);
+  border-radius:10px;
+}
+.instructions-audio-playbtn{
+  flex-shrink:0;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  border:none;
+  background:var(--ink);
+  color:var(--paper);
+  font-size:17px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  padding:0 0 0 3px;
+}
+.instructions-audio-playbtn:active{
+  transform:translateY(1px);
+}
+.instructions-audio-label{
+  flex-shrink:0;
+  font-size:16px;
+  color:var(--ink);
+}
+.instructions-audio-time{
+  flex-shrink:0;
+  font-size:14px;
+  color:var(--slate);
+  margin-left:auto;
+}
+.instructions-audio-volicon{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  color:var(--slate);
+}
+.instructions-audio-volume{
+  flex:0 0 110px;
+  accent-color:var(--ink);
+  height:4px;
+}
+#instructionsAudioPlayer{
+  display:none;
+}
+.instructions-audio-fallback{
+  font-family:'IBM Plex Mono',monospace;
+  font-size:13px;
+  color:var(--slate);
+  margin:0 0 14px 0;
+  padding:18px 24px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  max-width:640px;
+}
+@media (max-width:860px){
+  .instructions-columns{
+    flex-direction:column;
+  }
+  .instructions-timeline{
+    flex:1 1 auto;
+    width:100%;
+    border-right:none;
+    border-bottom:1px solid var(--line);
+  }
+  .instructions-detail-box{
+    flex-direction:column;
+  }
+  .instructions-illustration{
+    width:100%;
+  }
+}

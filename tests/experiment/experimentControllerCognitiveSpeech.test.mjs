@@ -159,7 +159,8 @@ test('the microphone does not start during INSTRUCTIONS, preparation, motor base
     assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone must be inactive during recovery');
 
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
     assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone must be inactive during preparation, even though the starting number is already known');
 
@@ -173,7 +174,8 @@ test('the microphone starts exactly when SUBTRACTION_3 begins, and stops exactly
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
 
     timers.complete(); // -> SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'SUBTRACTION_3');
@@ -199,7 +201,8 @@ test('phase advancement is never delayed by recording upload/transcription/scori
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     timers.complete(); // -> SUBTRACTION_3
 
     timers.complete(); // -> PREPARE_DUAL_TASK_3 (this is the phase transition under test)
@@ -265,7 +268,8 @@ test('dual-task: the mouse task and the audio-recording session both run for DUA
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     timers.complete(); // PREPARE_DUAL_TASK_3
 
@@ -299,7 +303,8 @@ test('the microphone remains inactive throughout recovery and preparation surrou
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     timers.complete(); // PREPARE_DUAL_TASK_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_DUAL_TASK_3');

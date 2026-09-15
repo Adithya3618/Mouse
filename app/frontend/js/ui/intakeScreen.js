@@ -78,6 +78,10 @@ function initWizard() {
     };
     const railItems = [...document.querySelectorAll('.step-rail-item')];
     const wizard = createIntakeWizardState({ totalSteps: Object.keys(stepElements).length });
+    // Debug-only frame number (see css/intake.css#.frame-debug-label) -
+    // conveniently, intake steps are already numbered 1/2/3, so this is
+    // just the wizard's own current step.
+    const frameLabelIntake = document.getElementById('frameLabelIntake');
 
     function render() {
         const current = wizard.getCurrentStep();
@@ -88,6 +92,10 @@ function initWizard() {
             } else {
                 hide(el);
             }
+        }
+
+        if (frameLabelIntake) {
+            frameLabelIntake.textContent = String(current);
         }
 
         for (const item of railItems) {

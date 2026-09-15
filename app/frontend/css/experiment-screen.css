@@ -73,12 +73,92 @@ body.experiment-active {
   color: var(--ink);
 }
 
+.task-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--slate);
+  margin: 0 0 8px 0;
+}
+
 .task-instruction {
   font-size: 21px;
   line-height: 1.55;
   color: var(--ink);
   max-width: 720px;
   margin: 0 0 20px 0;
+}
+
+/* REST's several distinct paragraphs (see ui/phaseCopy.js#getRecoveryDisplay) -
+   plain body copy, same size/color as .task-instruction. */
+.task-paragraphs {
+  max-width: 640px;
+  margin: 0 0 20px 0;
+}
+
+.task-paragraphs p {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0 0 16px 0;
+}
+
+.task-paragraphs p:last-child {
+  margin-bottom: 0;
+}
+
+/* Lead-in screens before count-back-only/dual-task: two lines, the first
+   line always visible, the second dimmed until
+   ui/experimentScreen.js#updateTransitionReveal reveals it (matches the
+   reviewed reference behavior: the second line only appears partway
+   through the lead-in, not immediately). */
+.transition-lines {
+  max-width: 640px;
+  margin: 0 0 20px 0;
+}
+
+.transition-line {
+  font-size: 24px;
+  line-height: 1.4;
+  color: var(--line);
+  margin: 0 0 12px 0;
+  transition: color .3s ease;
+}
+
+.transition-line:first-child {
+  color: var(--ink);
+}
+
+.transition-line.revealed {
+  color: var(--ink);
+}
+
+/* Pre-counting transition ONLY: a popping 3/2/1 in the lead-in's final 3
+   seconds (see ui/experimentScreen.js#updatePopCountdown) - additive to
+   .transition-lines above, not a replacement for it. */
+.transition-pop-countdown {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
+}
+
+.transition-pop-countdown-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 96px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+}
+
+.transition-pop-countdown-value.pop {
+  animation: transition-pop-in 0.5s cubic-bezier(0.22, 1.4, 0.36, 1);
+}
+
+@keyframes transition-pop-in {
+  0% { transform: scale(0.35); opacity: 0; }
+  65% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .starting-number {
@@ -186,8 +266,10 @@ body.experiment-active {
   transform: translateX(3px);
 }
 
-/* --- Pre-task countdown: one reusable "get ready / 3 / 2 / 1 / begin"
-   block, shown before every one of the 7 active tasks. --- */
+/* --- Clicking-only lead-in: the literal 10/9/8/7/6/5/4 countdown (see
+   ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE) - the only lead-in that still
+   uses this big-digit treatment; count-back-only/dual-task lead-ins use
+   .transition-lines above instead. --- */
 .prep-countdown {
   display: flex;
   flex-direction: column;
@@ -196,19 +278,10 @@ body.experiment-active {
   padding: 32px 0 48px;
 }
 
-.prep-countdown-label {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: var(--slate);
-  margin: 0 0 12px 0;
-}
-
 .prep-countdown-value {
   font-size: 120px;
   font-weight: 700;
-  color: var(--amber);
+  color: var(--ink);
   line-height: 1;
 }
 
@@ -220,25 +293,45 @@ body.experiment-active {
   padding-left: 20px;
 }
 
-/* --- Recovery: deliberately calm and visually distinct from active tasks -
-   centered, since there is no task/target field to left-align against. --- */
-#screen-experiment[data-phase-type="recovery"] .task-panel {
+/* --- REST: its own screen, title set large and bold per the reviewed
+   spec - deliberately NOT muted/--slate like the rest of this screen's
+   secondary text, since REST is meant to read as a clear, unmistakable
+   break, not a quiet aside. Centered, since there is no task/target field
+   to left-align against. Applies equally to RECOVERY_AFTER_MOTOR_INFO
+   (phaseType "recovery-info") - the second, timed "REST" screen shown only
+   right after RECOVERY_AFTER_MOTOR - so the pair reads as one continuous
+   visual treatment even though they're two separate phases. --- */
+#screen-experiment[data-phase-type="recovery"] .task-panel,
+#screen-experiment[data-phase-type="recovery-info"] .task-panel {
   text-align: center;
 }
 
-#screen-experiment[data-phase-type="recovery"] .task-title {
-  color: var(--slate);
-  font-weight: 600;
+#screen-experiment[data-phase-type="recovery"] .task-title,
+#screen-experiment[data-phase-type="recovery-info"] .task-title {
+  color: var(--ink);
+  font-weight: 800;
+  font-size: 64px;
+  margin-bottom: 24px;
 }
 
-#screen-experiment[data-phase-type="recovery"] .task-instruction {
-  color: var(--slate);
+#screen-experiment[data-phase-type="recovery"] .task-eyebrow,
+#screen-experiment[data-phase-type="recovery"] .task-paragraphs,
+#screen-experiment[data-phase-type="recovery-info"] .task-eyebrow,
+#screen-experiment[data-phase-type="recovery-info"] .task-paragraphs {
   margin-left: auto;
   margin-right: auto;
+  text-align: left;
 }
 
-#screen-experiment[data-phase-type="recovery"] .timer-badge-value {
-  color: var(--slate);
+/* The RECOVERY_AFTER_MOTOR "Play Instructions" player (see
+   js/ui/experimentScreen.js's RECOVERY_AUDIO_FILE_BY_PHASE_ID) - same
+   centered-block treatment as .task-paragraphs above, so it lines up under
+   the centered title/paragraphs instead of hugging the left edge of this
+   already-centered .task-panel. */
+#screen-experiment[data-phase-type="recovery"] #recoveryAudioWrap,
+#screen-experiment[data-phase-type="recovery"] #recoveryAudioFallback {
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* --- Complete / Results screen --- */
@@ -389,7 +482,8 @@ body.experiment-active {
 }
 
 .export-status.is-error {
-  color: #B3261E;
+  color: var(--ink);
+  font-weight: 600;
 }
 
 /* --- Mouse task container: sizing/visual chrome, PLUS the positioning fix
@@ -447,6 +541,157 @@ body.experiment-active {
   position: absolute;
   left: -9999px;
   top: -9999px;
+}
+
+/* --- Fullscreen task mode: while the participant is actively clicking
+   (clicking-only, either dual-task block) or in the digit countdown that
+   leads straight into clicking-only, the screen is stripped down to just
+   the target box - no header, nav, or instruction text (see
+   ui/experimentScreen.js#isFullscreenTaskPhase). The Time Remaining badge
+   and the recording indicator are NOT chrome in this sense - they stay
+   visible, stacked as one corner group (timer on top, recording status
+   directly beneath, same width/alignment - see the shared
+   CORNER_WIDTH/CORNER_TOP/TIMER_BOX_HEIGHT/CORNER_GAP values below), so the
+   participant always has a clear, unmistakable sign of how much time is
+   left and whether the microphone is recording. This exact box (both
+   elements' combined footprint) is also what
+   js/experiment/experimentController.js reserves as a dot no-spawn zone -
+   keep any layout change here in sync with that reserved rectangle. --- */
+body.fullscreen-task.experiment-active {
+  padding: 0;
+}
+
+body.fullscreen-task .experiment-wrap {
+  max-width: none;
+}
+
+/* CORNER_WIDTH=220, CORNER_TOP=16, TIMER_BOX_HEIGHT=64 - referenced by the
+   no-spawn reserved rect (js/experiment/experimentController.js) and by
+   .speech-panel's `top` below (16 + 64 + 10 gap = 90). */
+body.fullscreen-task .experiment-topbar {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  left: auto;
+  width: 220px;
+  height: 64px;
+  z-index: 30;
+  margin: 0;
+  padding: 0 14px;
+  border-bottom: none;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+body.fullscreen-task .experiment-topbar .eyebrow {
+  display: none;
+}
+
+body.fullscreen-task .task-title,
+body.fullscreen-task .task-instruction,
+body.fullscreen-task .pill-row {
+  display: none;
+}
+
+body.fullscreen-task .task-panel {
+  margin-bottom: 0;
+}
+
+body.fullscreen-task #screen-experiment[data-phase-type="dual-task"] .task-panel {
+  border-left: none;
+  padding-left: 0;
+}
+
+/* The recording indicator: always visible during dual-task, moved out of
+   normal document flow into a small fixed badge directly beneath the timer
+   box above - same width/right edge, thin uniform border (no accent
+   stripe), so the pair reads as one stacked group. */
+body.fullscreen-task .speech-panel {
+  position: fixed;
+  top: 90px;
+  right: 20px;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: 30;
+  width: 220px;
+  max-width: 220px;
+  padding: 10px 14px;
+  margin: 0;
+  border-left: 1px solid var(--line);
+}
+
+body.fullscreen-task .recording-icon {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+body.fullscreen-task .recording-status {
+  font-size: 11px;
+}
+
+body.fullscreen-task .recording-timer {
+  font-size: 16px;
+  margin-bottom: 2px;
+}
+
+body.fullscreen-task .recording-caption {
+  font-size: 11px;
+}
+
+body.fullscreen-task .canvas-caption {
+  display: none;
+}
+
+/* The counting number: only DUAL_TASK_<n> ever has showStartingNumber true
+   while fullscreen (see ui/phaseCopy.js) - a fixed top-LEFT card, mirroring
+   the top-right timer/recording pair's own treatment (thin border, no
+   shadow, no color), so the two never overlap. Static for the phase's
+   whole duration - this is a display only, never inferred from or
+   validating what the participant actually says (see
+   js/mouse/target.js#RESERVED_CORNER_ZONE_LEFT for the matching dot
+   no-spawn zone under it). */
+body.fullscreen-task .starting-number {
+  position: fixed;
+  top: 16px;
+  left: 20px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 14px;
+}
+
+body.fullscreen-task .starting-number-label {
+  color: var(--slate);
+}
+
+body.fullscreen-task .starting-number-value {
+  font-size: 30px;
+}
+
+/* The clicking-only digit countdown (PREPARE_MOTOR_BASELINE): centered in
+   the full viewport, not just within .task-panel's own (top-of-page) flow
+   position - taken out of flow entirely so its centering never depends on
+   whatever else is/isn't visible above it. */
+body.fullscreen-task .prep-countdown {
+  position: fixed;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  z-index: 20;
+}
+
+body.fullscreen-task #gameScreen {
+  height: calc(100vh - 24px);
 }
 
 @media (max-width: 720px) {

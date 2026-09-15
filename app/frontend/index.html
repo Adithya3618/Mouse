@@ -17,43 +17,26 @@
 <body>
 
 <section id="screen-intake" class="screen">
+<!-- Debug-only: numbers every distinct screen/phase-view for quick
+     reference during testing/editing - not part of the participant
+     experience. See css/intake.css#.frame-debug-label and
+     js/ui/intakeScreen.js (this one)/js/ui/experimentScreen.js (the
+     dynamic #frameLabelExperiment one below). -->
+<span class="frame-debug-label" id="frameLabelIntake"></span>
 <div class="wrap">
 
   <div class="topbar">
-    <span class="eyebrow">Mouse Accuracy Study · Session Intake</span>
+    <span class="eyebrow">Session Intake</span>
     <span class="clock mono" id="clock">— : —</span>
-  </div>
-
-  <!-- Step rail: current step + any step already reached is clickable to
-       go back to (see js/ui/intakeWizardState.js/intakeScreen.js) - never
-       lets the participant jump ahead to a step they haven't seen yet. -->
-  <div class="step-rail" id="stepRail">
-    <button type="button" class="step-rail-item" data-step="1">
-      <span class="step-rail-num">1</span>
-      <span class="step-rail-label">Overview</span>
-    </button>
-    <span class="step-rail-connector"></span>
-    <button type="button" class="step-rail-item" data-step="2">
-      <span class="step-rail-num">2</span>
-      <span class="step-rail-label">Protocol</span>
-    </button>
-    <span class="step-rail-connector"></span>
-    <button type="button" class="step-rail-item" data-step="3">
-      <span class="step-rail-num">3</span>
-      <span class="step-rail-label">Details</span>
-    </button>
   </div>
 
   <!-- STEP 1: OVERVIEW - eyebrow + title + one-line tagline, nothing else. -->
   <div class="intake-step" id="intakeStep1">
-    <p class="study-name">Mouse Accuracy Study</p>
-    <h1>Motor&#8211;Cognitive<br><em>Dual&#8209;Task</em> Experiment</h1>
-    <p class="subhead">A short mouse-clicking baseline followed by three rounds of counting backward — with and without clicking.</p>
+    <h1>Motor&#8211;Cognitive<br><em>Dual&#8209;Task</em></h1>
+    <p class="subhead">A short clicking-only baseline followed by three rounds of counting backward — with and without clicking.</p>
 
     <div class="pulse-row">
-      <span><span class="pulse-dot motor"></span>Motor task</span>
-      <span><span class="pulse-dot cog"></span>Cognitive task</span>
-      <span class="pulse-meta">10 phases · ~19 min</span>
+      <span class="pulse-meta">10 phases · ~16 min</span>
     </div>
 
     <div class="step-nav">
@@ -68,46 +51,46 @@
       <div class="panel-title"><span>Protocol overview</span><span>10 phases</span></div>
       <div class="phase-list">
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Motor baseline</span><span class="phase-time">2:00</span></div>
-          <div class="phase-sub">Clicking only</div>
+          <div class="phase-row"><span class="phase-name">Clicking only</span><span class="phase-time">1:20</span></div>
+          <div class="phase-sub">Motor task</div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Recovery</span><span class="phase-time">1:30</span></div>
+          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Subtract by 3</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count back by 3</span><span class="phase-time">1:30</span></div>
           <div class="phase-sub">Counting only</div>
         </div>
         <div class="phase dual">
-          <div class="phase-row"><span class="phase-name">Subtract by 3 + click</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count back by 3 and clicking</span><span class="phase-time">2:00</span></div>
           <div class="phase-sub">Dual task</div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Recovery</span><span class="phase-time">1:30</span></div>
+          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Subtract by 7</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count back by 7</span><span class="phase-time">1:30</span></div>
           <div class="phase-sub">Counting only</div>
         </div>
         <div class="phase dual">
-          <div class="phase-row"><span class="phase-name">Subtract by 7 + click</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count back by 7 and clicking</span><span class="phase-time">2:00</span></div>
           <div class="phase-sub">Dual task</div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Recovery</span><span class="phase-time">1:30</span></div>
+          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Subtract by 17</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count back by 17</span><span class="phase-time">1:30</span></div>
           <div class="phase-sub">Counting only</div>
         </div>
         <div class="phase dual">
-          <div class="phase-row"><span class="phase-name">Subtract by 17 + click</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count back by 17 and clicking</span><span class="phase-time">2:00</span></div>
           <div class="phase-sub">Dual task</div>
         </div>
       </div>
       <div class="panel-total">
         <span class="label">Total runtime</span>
-        <span class="value">~19 min</span>
+        <span class="value">~16 min</span>
       </div>
     </div>
 
@@ -137,41 +120,196 @@
       </button>
     </div>
 
-    <div class="disclaimer">Once started, the protocol runs its full sequence automatically — instructions, then each timed phase in order. There's no need to advance screens manually.</div>
-  </div>
+   </div>
 
 </div>
 </section>
 
 <section id="screen-instructions" class="screen" hidden>
+<span class="frame-debug-label">4</span>
 <div class="wrap">
 
   <div class="topbar">
-    <span class="eyebrow">Mouse Accuracy Study · Instructions</span>
+    <span class="eyebrow">Instructions</span>
   </div>
 
-  <h1>Instructions</h1>
-  <p class="subhead" id="participantSummary"></p>
+  <!-- Two-column guided walkthrough: LEFT is the persistent, display-only
+       10-step timeline (never clickable - progression is strictly
+       sequential, via the RIGHT panel's own Continue button only); RIGHT
+       shows the currently active step's detail, one at a time (see
+       js/ui/instructionsScreen.js, which owns all of the active/inactive
+       state and text here). Purely a pre-experiment walkthrough on this
+       one page - the real timed experiment (phases 5+) is entirely
+       unaffected by anything here. -->
+  <div class="instructions-columns">
 
-  <div class="instructions-body">
-    <p>You will complete 7 tasks total, consisting of a motor baseline followed by 3 series of cognitive and dual tasks, with 90-second recovery periods between series.</p>
-    <ol>
-      <li>Dot clicking on a screen — 2 minutes</li>
-      <li>90-second recovery</li>
-      <li>Count backward by 3 — 2 minutes</li>
-      <li>Dot clicking + count backward by 3 — 2 minutes</li>
-      <li>90-second recovery</li>
-      <li>Count backward by 7 — 2 minutes</li>
-      <li>Dot clicking + count backward by 7 — 2 minutes</li>
-      <li>90-second recovery</li>
-      <li>Count backward by 17 — 2 minutes</li>
-      <li>Dot clicking + count backward by 17 — 2 minutes</li>
-    </ol>
-    <p class="protocol-total">Total protocol time: approximately 19 minutes.</p>
-    <p>Follow the instructions shown on the screen throughout the experiment.</p>
+    <div class="instructions-timeline">
+      <h1>Experiment Overview</h1>
+      <p class="subhead" id="participantSummary"></p>
+      <div class="phase-list" id="instructionsPhaseList">
+          <div class="phase" data-step="1">
+            <div class="phase-row"><span class="phase-name">Clicking only</span><span class="phase-time">1:20</span></div>
+          </div>
+          <div class="phase" data-step="2">
+            <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
+          </div>
+          <div class="phase" data-step="3">
+            <div class="phase-row"><span class="phase-name">Count back by 3</span><span class="phase-time">1:30</span></div>
+          </div>
+          <div class="phase dual" data-step="4">
+            <div class="phase-row"><span class="phase-name">Count back by 3 and clicking</span><span class="phase-time">2:00</span></div>
+          </div>
+          <div class="phase" data-step="5">
+            <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
+          </div>
+          <div class="phase" data-step="6">
+            <div class="phase-row"><span class="phase-name">Count back by 7</span><span class="phase-time">1:30</span></div>
+          </div>
+          <div class="phase dual" data-step="7">
+            <div class="phase-row"><span class="phase-name">Count back by 7 and clicking</span><span class="phase-time">2:00</span></div>
+          </div>
+          <div class="phase" data-step="8">
+            <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
+          </div>
+          <div class="phase" data-step="9">
+            <div class="phase-row"><span class="phase-name">Count back by 17</span><span class="phase-time">1:30</span></div>
+          </div>
+          <div class="phase dual" data-step="10">
+            <div class="phase-row"><span class="phase-name">Count back by 17 and clicking</span><span class="phase-time">2:00</span></div>
+          </div>
+        </div>
+    </div>
+
+    <div class="instructions-detail">
+      <p class="instructions-detail-step" id="instructionsStepLabel"></p>
+      <h2 class="instructions-detail-title">
+        <span id="instructionsStepTitle"></span>
+        <span class="instructions-detail-duration" id="instructionsStepDuration"></span>
+      </h2>
+
+      <p class="instructions-detail-intro" id="instructionsIntro" hidden></p>
+
+      <div class="instructions-detail-box">
+        <ul class="instructions-bullets" id="instructionsBullets"></ul>
+        <!-- Small illustrative preview of the dot-clicking task - shown
+             only for steps that actually involve clicking (built with
+             plain CSS shapes, no image asset, so it stays crisp/lightweight
+             and trivially stays black-and-white). Purely decorative/
+             illustrative on this preview page - never the real interactive
+             task, which still only ever runs via the real, unmodified
+             mouse/target.js during the actual timed experiment. -->
+        <div class="instructions-illustration" id="instructionsIllustration" hidden aria-hidden="true">
+          <span class="illus-tick illus-tick--1"></span>
+          <span class="illus-tick illus-tick--2"></span>
+          <span class="illus-tick illus-tick--3"></span>
+          <span class="illus-tick illus-tick--4"></span>
+          <span class="illus-tick illus-tick--5"></span>
+          <span class="illus-tick illus-tick--6"></span>
+          <span class="illus-dot illus-dot--pop"></span>
+          <span class="illus-dot illus-dot--a"></span>
+          <span class="illus-dot illus-dot--b"></span>
+          <span class="illus-dot illus-dot--c"></span>
+          <span class="illus-cursor"></span>
+        </div>
+      </div>
+
+      <!-- Custom-styled player (not the native <audio controls> UI) driven
+           entirely by the real HTML5 <audio> element for actual playback -
+           reliable play/pause/seek-by-time-display/volume, just with our
+           own black-and-white controls instead of the browser's default
+           ones. No audio files exist yet (see
+           app/frontend/audio/instructions/ - empty, awaiting real
+           recordings); an `error` listener in instructionsScreen.js swaps
+           the whole row for the fallback note instead of showing broken
+           controls. preload="metadata" (not "none") is required for that
+           check to actually fire on a missing file - "none" defers the
+           browser's own request until playback is attempted, so a 404
+           would otherwise go undetected until the participant clicks play. -->
+      <div class="instructions-audio" id="instructionsAudioWrap">
+        <button type="button" class="instructions-audio-playbtn" id="instructionsAudioPlayBtn" aria-label="Play instructions">
+          <span id="instructionsAudioPlayIcon">▶</span>
+        </button>
+        <span class="instructions-audio-label">Play instructions</span>
+        <span class="instructions-audio-time mono" id="instructionsAudioTime">0:00 / 0:00</span>
+        <span class="instructions-audio-volicon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="3 9 3 15 8 15 13 20 13 4 8 9 3 9"></polygon>
+            <path d="M16 8a5 5 0 0 1 0 8"></path>
+            <path d="M18.5 5.5a9 9 0 0 1 0 13"></path>
+          </svg>
+        </span>
+        <input type="range" class="instructions-audio-volume" id="instructionsAudioVolume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+        <audio id="instructionsAudioPlayer" preload="metadata"></audio>
+      </div>
+      <p class="instructions-audio-fallback" id="instructionsAudioFallback" hidden>Audio not yet available.</p>
+
+      <button class="begin" id="continueBtn">
+        Continue <span class="arrow">→</span>
+      </button>
+    </div>
+
+    <!-- Small, deliberately muted shortcut past the whole 10-step preview
+         walkthrough, straight to the existing "Before You Begin" hand-off
+         (#screen-experiment-entry) - the exact same target/transition as
+         step 10's own Continue button (see initInstructionsScreen in
+         js/ui/instructionsScreen.js). Only skips this preview; the real
+         timed experiment after "Before You Begin" is entirely unaffected. -->
+    <button type="button" class="instructions-skip" id="skipInstructionsBtn">Skip Instructions <span class="arrow">→</span></button>
+
   </div>
 
-  <button class="begin" id="continueBtn">
+</div>
+</section>
+
+<!-- "Before You Begin" - TEMPORARILY REMOVED FROM THE PARTICIPANT-FACING
+     FLOW (kept, not deleted, so it's a one-line revert in
+     js/ui/instructionsScreen.js#finishInstructionsWalkthrough to bring
+     back). Instructions' Continue/Skip now call controller.advance()
+     directly instead of showing this section. All markup, styling, and the
+     before-you-begin.mp3 recording stay exactly as they were - only the
+     hand-off into this screen was disabled. Its own Continue button
+     (#continueEntryBtn) is unreachable while unused but still wired to
+     controller.advance(), unchanged. -->
+<section id="screen-experiment-entry" class="screen" hidden>
+<span class="frame-debug-label">4.5</span>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="eyebrow"></span>
+  </div>
+
+  <h1>Before You Begin</h1>
+
+  <div class="instructions-body" id="entryPageBody">
+    <p>Please count audibly and clearly. If you make a mistake, continue counting backward from the last number you stated. If you forget the number, choose a number in the same general range and continue counting backward as many times as you can until the time runs out.</p>
+  </div>
+
+  <!-- Same custom-styled player pattern as #screen-instructions' own
+       instruction audio (css/instructions.css's .instructions-audio* rules,
+       reused here as-is - no new CSS needed) - a real hidden <audio>
+       element for playback, our own black-and-white controls instead of
+       the browser's default ones. preload="metadata" (not "none") so a
+       missing file's `error` event fires promptly instead of only on
+       first play - see js/ui/instructionsScreen.js. -->
+  <div class="instructions-audio" id="entryAudioWrap">
+    <button type="button" class="instructions-audio-playbtn" id="entryAudioPlayBtn" aria-label="Play instructions">
+      <span id="entryAudioPlayIcon">▶</span>
+    </button>
+    <span class="instructions-audio-label">Play Instructions</span>
+    <span class="instructions-audio-time mono" id="entryAudioTime">0:00 / 0:00</span>
+    <span class="instructions-audio-volicon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="3 9 3 15 8 15 13 20 13 4 8 9 3 9"></polygon>
+        <path d="M16 8a5 5 0 0 1 0 8"></path>
+        <path d="M18.5 5.5a9 9 0 0 1 0 13"></path>
+      </svg>
+    </span>
+    <input type="range" class="instructions-audio-volume" id="entryAudioVolume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+    <audio id="entryAudioPlayer" preload="metadata"></audio>
+  </div>
+  <p class="instructions-audio-fallback" id="entryAudioFallback" hidden>Audio not yet available.</p>
+
+  <button class="begin" id="continueEntryBtn">
     Continue <span class="arrow">→</span>
   </button>
 
@@ -179,10 +317,17 @@
 </section>
 
 <section id="screen-experiment" class="screen" hidden>
+<span class="frame-debug-label" id="frameLabelExperiment"></span>
 <div class="experiment-wrap">
 
-  <div class="experiment-topbar">
-    <span class="eyebrow">Mouse Accuracy Study</span>
+  <div class="experiment-topbar" id="experimentTopbar">
+    <!-- Intentionally empty (not removed): .experiment-topbar is a flex
+         row with the timer badge below as its other child, laid out via
+         justify-content:space-between (css/experiment-screen.css) - an
+         empty span still holds that layout's left slot so the timer badge
+         stays pinned to the right exactly as before, instead of jumping
+         left the moment there's only one flex child left. -->
+    <span class="eyebrow"></span>
     <div class="timer-badge" id="timerBadge" hidden>
       <span class="timer-badge-label">Time Remaining</span>
       <span class="timer-badge-value mono" id="timerValue">00:00</span>
@@ -190,17 +335,70 @@
   </div>
 
   <div class="task-panel" id="taskPanel">
+    <p class="task-eyebrow" id="taskEyebrow" hidden></p>
     <h1 class="task-title" id="taskTitle"></h1>
     <p class="task-instruction" id="taskInstruction"></p>
+
+    <!-- REST screens: several distinct paragraphs (see
+         js/ui/phaseCopy.js#getRecoveryDisplay) rather than one run-on
+         instruction. -->
+    <div class="task-paragraphs" id="taskParagraphs" hidden></div>
+
+    <!-- RECOVERY_AFTER_MOTOR only (see js/ui/experimentScreen.js's
+         RECOVERY_AUDIO_FILE_BY_PHASE_ID) - same custom-styled player as
+         Instructions'/"Before You Begin"'s own (css/instructions.css's
+         .instructions-audio* rules, reused as-is), narrating this phase's
+         paragraphs above. Hidden entirely (not even the fallback note) for
+         every other phase, including the other two REST screens, which
+         have no audio mapped yet. -->
+    <div class="instructions-audio" id="recoveryAudioWrap" hidden>
+      <button type="button" class="instructions-audio-playbtn" id="recoveryAudioPlayBtn" aria-label="Play instructions">
+        <span id="recoveryAudioPlayIcon">▶</span>
+      </button>
+      <span class="instructions-audio-label">Play Instructions</span>
+      <span class="instructions-audio-time mono" id="recoveryAudioTime">0:00 / 0:00</span>
+      <span class="instructions-audio-volicon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="3 9 3 15 8 15 13 20 13 4 8 9 3 9"></polygon>
+          <path d="M16 8a5 5 0 0 1 0 8"></path>
+          <path d="M18.5 5.5a9 9 0 0 1 0 13"></path>
+        </svg>
+      </span>
+      <input type="range" class="instructions-audio-volume" id="recoveryAudioVolume" min="0" max="1" step="0.01" value="1" aria-label="Volume">
+      <audio id="recoveryAudioPlayer" preload="metadata"></audio>
+    </div>
+    <p class="instructions-audio-fallback" id="recoveryAudioFallback" hidden>Audio not yet available.</p>
+
+    <!-- Lead-in screens before count-back-only/dual-task. Count-back-only's
+         has two lines, the second revealed partway through by
+         js/ui/experimentScreen.js (see phase.revealSecondLineAtRemaining);
+         dual-task's has just #transitionLine1 (its second line is the
+         popping #transitionPopCountdown below instead). -->
+    <div class="transition-lines" id="transitionLines" hidden>
+      <p class="transition-line" id="transitionLine1"></p>
+      <p class="transition-line" id="transitionLine2"></p>
+    </div>
+
+    <!-- Pre-counting and dual-task transitions (precedesPhaseType
+         "cognitive"/"dual-task"): a popping 3/2/1 shown in the lead-in's
+         final 3 seconds - purely a visual addition on top of
+         #transitionLines above, no effect on this screen's duration or
+         when it advances (see js/ui/experimentScreen.js#updatePopCountdown). -->
+    <div class="transition-pop-countdown" id="transitionPopCountdown" hidden>
+      <span class="transition-pop-countdown-value" id="transitionPopCountdownValue"></span>
+    </div>
 
     <div class="starting-number" id="startingNumberBlock" hidden>
       <span class="starting-number-label">Starting Number</span>
       <span class="starting-number-value mono" id="startingNumberValue">—</span>
     </div>
 
+    <!-- Clicking-only lead-in ONLY - a literal 10/9/8/.../1/0 countdown
+         (see js/ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE), not a generic
+         "3/2/1/BEGIN" - every other lead-in uses #transitionLines above
+         instead. -->
     <div class="prep-countdown" id="prepCountdown" hidden>
-      <p class="prep-countdown-label">Get Ready</p>
-      <span class="prep-countdown-value mono" id="prepCountdownValue">3</span>
+      <span class="prep-countdown-value mono" id="prepCountdownValue">10</span>
     </div>
 
     <div class="pill-row" id="pillRow" hidden>
@@ -212,9 +410,9 @@
          only once the recovery timer reaches 00:00 - see
          js/experiment/experimentController.js#isRecoveryReadyToProceed and
          js/ui/experimentScreen.js. The participant cannot advance past a
-         recovery phase any other way. -->
+         REST phase any other way. -->
     <button type="button" class="proceed-button" id="recoveryProceedBtn" hidden>
-      Proceed <span class="arrow">→</span>
+      Continue <span class="arrow">→</span>
     </button>
 
     <!-- Recording indicator UI - active only during SUBTRACTION_<n>/
@@ -224,7 +422,11 @@
          phase ends (see js/cognitive/cognitiveAudioSession.js). Deliberately
          kept inside .task-panel, separate from #gameScreen/#game below, so
          it never overlaps or interferes with the mouse target field during
-         dual-task conditions. -->
+         dual-task conditions. Stays visible (repositioned as a small
+         floating badge - see css/experiment-screen.css's
+         body.fullscreen-task rules) even when the dual-task screen strips
+         away every other header/nav element, so the participant always has
+         a clear, visible sign the microphone is on and recording. -->
     <div class="speech-panel" id="speechPanel" hidden>
       <div class="recording-icon" aria-hidden="true">🎙️</div>
       <div class="recording-status" id="recordingStatus">Preparing microphone…</div>

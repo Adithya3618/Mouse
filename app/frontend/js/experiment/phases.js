@@ -19,7 +19,11 @@
 // There is NO recovery between a condition's subtraction-only block and
 // its own dual-task block (they run back-to-back, save for that pair's own
 // preparation countdown), and NO recovery after the final condition's (17)
-// dual-task block - the experiment ends right there.
+// dual-task block - the experiment ends right there. RECOVERY_AFTER_MOTOR
+// specifically is followed by one extra timed screen,
+// RECOVERY_AFTER_MOTOR_INFO (see conditions.js#buildRecoveryInfoMetadata) -
+// the count-back-only -> dual-task transition procedure, on its own page.
+// RECOVERY_AFTER_DUAL_3/_7 have no such second screen.
 //
 // The random starting number for a condition is generated the moment its
 // PREPARE_SUBTRACTION_<n> phase begins (as soon as its subtractionValue is
@@ -31,6 +35,7 @@ import {
     buildMotorBaselineMetadata,
     buildPreparationMetadata,
     buildRecoveryMetadata,
+    buildRecoveryInfoMetadata,
     buildSubtractionConditionMetadata
 } from './conditions.js';
 
@@ -40,6 +45,7 @@ export const PhaseId = Object.freeze({
     PREPARE_MOTOR_BASELINE: 'PREPARE_MOTOR_BASELINE',
     MOTOR_BASELINE: 'MOTOR_BASELINE',
     RECOVERY_AFTER_MOTOR: 'RECOVERY_AFTER_MOTOR',
+    RECOVERY_AFTER_MOTOR_INFO: 'RECOVERY_AFTER_MOTOR_INFO',
     COMPLETE: 'COMPLETE'
     // PREPARE_SUBTRACTION_<n>, SUBTRACTION_<n>, PREPARE_DUAL_TASK_<n>,
     // DUAL_TASK_<n>, and RECOVERY_AFTER_DUAL_<n> are generated per
@@ -72,7 +78,11 @@ export function buildPhaseSequence(config) {
         },
         {
             phaseId: PhaseId.RECOVERY_AFTER_MOTOR,
-            ...buildRecoveryMetadata(config)
+            ...buildRecoveryMetadata(config, { duration: config.recoveryAfterMotorDurationSeconds })
+        },
+        {
+            phaseId: PhaseId.RECOVERY_AFTER_MOTOR_INFO,
+            ...buildRecoveryInfoMetadata(config)
         }
     ];
 

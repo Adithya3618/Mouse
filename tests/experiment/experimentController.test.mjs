@@ -13,6 +13,7 @@ const EXPECTED_ORDER = [
     'PREPARE_MOTOR_BASELINE',
     'MOTOR_BASELINE',
     'RECOVERY_AFTER_MOTOR',
+    'RECOVERY_AFTER_MOTOR_INFO',
     'PREPARE_SUBTRACTION_3',
     'SUBTRACTION_3',
     'PREPARE_DUAL_TASK_3',
@@ -31,7 +32,11 @@ const EXPECTED_ORDER = [
 ];
 
 const RECOVERY_PHASE_IDS = ['RECOVERY_AFTER_MOTOR', 'RECOVERY_AFTER_DUAL_3', 'RECOVERY_AFTER_DUAL_7'];
-const PREP_DURATION = experimentConfig.preTaskCountdownSeconds + 1;
+// PREPARE_MOTOR_BASELINE's own lead-in duration (the 10/9/8/.../1/0 digit
+// countdown) - the other 6 preparation phases each have their own,
+// different lead-in duration (see conditions.js#buildPreparationMetadata),
+// so this constant is only ever used for PREPARE_MOTOR_BASELINE below.
+const PREP_DURATION = experimentConfig.motorBaselineCountdownSeconds;
 
 // A fully synchronous, test-controlled stand-in for timer/timer.js's real
 // Timer. start() records the requested duration but does NOT complete on
@@ -139,17 +144,17 @@ test('start() moves from WELCOME into PREPARE_MOTOR_BASELINE, not straight into 
     assert.equal(timers.durations.at(-1), PREP_DURATION);
 });
 
-test('3. Motor baseline lasts 120 seconds according to configuration, starting only after its preparation countdown', () => {
+test('3. Clicking-only (MOTOR_BASELINE) lasts 80 seconds according to configuration, starting only after its countdown', () => {
     const { controller, timers } = createTestController();
     controller.start(); // INSTRUCTIONS
     controller.advance(); // -> PREPARE_MOTOR_BASELINE
     timers.complete(); // preparation's own timer completes -> MOTOR_BASELINE
     assert.equal(controller.getCurrentPhaseId(), 'MOTOR_BASELINE');
     assert.equal(timers.durations.at(-1), experimentConfig.motorBaselineDurationSeconds);
-    assert.equal(experimentConfig.motorBaselineDurationSeconds, 120);
+    assert.equal(experimentConfig.motorBaselineDurationSeconds, 80);
 });
 
-test('Recovery immediately follows motor baseline, and lasts 90 seconds', () => {
+test('REST immediately follows clicking-only, and lasts 90 seconds', () => {
     const { controller, timers } = createTestController();
     controller.start();
     controller.advance(); // -> PREPARE_MOTOR_BASELINE
@@ -166,7 +171,8 @@ test('4. Subtraction 3 is created correctly, and is preceded by its own preparat
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes - not yet advanced
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
     assert.equal(controller.getCurrentPhase().precedesPhaseType, 'cognitive');
 
@@ -185,7 +191,8 @@ test('5, 6, 7. Each subtraction condition gets a number in range, and each diffe
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     const session = controller.getSession();
 
@@ -279,6 +286,7 @@ test('13. Every phase has correct metadata (phaseType/mouseActive/cognitiveActiv
         PREPARE_MOTOR_BASELINE: { phaseType: 'preparation', mouseActive: false, cognitiveActive: false },
         MOTOR_BASELINE: { phaseType: 'motor', mouseActive: true, cognitiveActive: false },
         RECOVERY_AFTER_MOTOR: { phaseType: 'recovery', mouseActive: false, cognitiveActive: false },
+        RECOVERY_AFTER_MOTOR_INFO: { phaseType: 'recovery-info', mouseActive: false, cognitiveActive: false },
         PREPARE_SUBTRACTION_3: { phaseType: 'preparation', mouseActive: false, cognitiveActive: false },
         SUBTRACTION_3: { phaseType: 'cognitive', mouseActive: false, cognitiveActive: true },
         PREPARE_DUAL_TASK_3: { phaseType: 'preparation', mouseActive: false, cognitiveActive: false },
@@ -321,7 +329,8 @@ test('15. Mouse data is stored separately per mouse-containing condition, not co
     controller.reportMousePerformance({ totalTargets: 40, totalClicks: 50, totalHits: 35 });
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     timers.complete(); // -> SUBTRACTION_3
     timers.complete(); // -> PREPARE_DUAL_TASK_3
     timers.complete(); // -> DUAL_TASK_3
@@ -412,44 +421,52 @@ test('the task timer starts only after the pre-task countdown finishes, not duri
     timers.complete(); // preparation's timer finishes -> MOTOR_BASELINE begins
     assert.equal(controller.getCurrentPhaseId(), 'MOTOR_BASELINE');
 
-    // Only NOW is the real 120-second task timer requested - a second,
+    // Only NOW is the real 80-second task timer requested - a second,
     // separate Timer.start() call, not a continuation of the first.
     assert.equal(timers.durations.length, 2);
-    assert.equal(timers.durations[1], 120);
+    assert.equal(timers.durations[1], 80);
 });
 
-test('this holds for every one of the 7 active tasks, not just motor baseline', () => {
+test('this holds for every one of the 7 active tasks, not just clicking-only - each with its own lead-in/task duration', () => {
     const { controller, timers } = createTestController();
     controller.start();
 
     const checks = [
-        { prep: 'PREPARE_MOTOR_BASELINE', task: 'MOTOR_BASELINE', taskDuration: 120 },
-        { prep: 'PREPARE_SUBTRACTION_3', task: 'SUBTRACTION_3', taskDuration: 120 },
-        { prep: 'PREPARE_DUAL_TASK_3', task: 'DUAL_TASK_3', taskDuration: 120 },
-        { prep: 'PREPARE_SUBTRACTION_7', task: 'SUBTRACTION_7', taskDuration: 120 },
-        { prep: 'PREPARE_DUAL_TASK_7', task: 'DUAL_TASK_7', taskDuration: 120 },
-        { prep: 'PREPARE_SUBTRACTION_17', task: 'SUBTRACTION_17', taskDuration: 120 },
-        { prep: 'PREPARE_DUAL_TASK_17', task: 'DUAL_TASK_17', taskDuration: 120 }
+        { prep: 'PREPARE_MOTOR_BASELINE', prepDuration: experimentConfig.motorBaselineCountdownSeconds, task: 'MOTOR_BASELINE', taskDuration: experimentConfig.motorBaselineDurationSeconds },
+        { prep: 'PREPARE_SUBTRACTION_3', prepDuration: experimentConfig.preCountingTransitionSeconds, task: 'SUBTRACTION_3', taskDuration: experimentConfig.subtractionOnlyDurationSeconds },
+        { prep: 'PREPARE_DUAL_TASK_3', prepDuration: experimentConfig.dualTaskTransitionSeconds, task: 'DUAL_TASK_3', taskDuration: experimentConfig.dualTaskDurationSeconds },
+        { prep: 'PREPARE_SUBTRACTION_7', prepDuration: experimentConfig.preCountingTransitionSeconds, task: 'SUBTRACTION_7', taskDuration: experimentConfig.subtractionOnlyDurationSeconds },
+        { prep: 'PREPARE_DUAL_TASK_7', prepDuration: experimentConfig.dualTaskTransitionSeconds, task: 'DUAL_TASK_7', taskDuration: experimentConfig.dualTaskDurationSeconds },
+        { prep: 'PREPARE_SUBTRACTION_17', prepDuration: experimentConfig.preCountingTransitionSeconds, task: 'SUBTRACTION_17', taskDuration: experimentConfig.subtractionOnlyDurationSeconds },
+        { prep: 'PREPARE_DUAL_TASK_17', prepDuration: experimentConfig.dualTaskTransitionSeconds, task: 'DUAL_TASK_17', taskDuration: experimentConfig.dualTaskDurationSeconds }
     ];
 
     controller.advance(); // INSTRUCTIONS -> PREPARE_MOTOR_BASELINE
 
-    for (const { prep, task, taskDuration } of checks) {
+    for (const { prep, prepDuration, task, taskDuration } of checks) {
         assert.equal(controller.getCurrentPhaseId(), prep, `expected to be at ${prep}`);
-        assert.equal(timers.durations.at(-1), PREP_DURATION, `${prep} must use the preparation duration, not the task's`);
+        assert.equal(timers.durations.at(-1), prepDuration, `${prep} must use its own lead-in duration, not the task's`);
 
         timers.complete(); // preparation finishes -> the task itself begins
         assert.equal(controller.getCurrentPhaseId(), task, `expected to be at ${task} after ${prep} completes`);
         assert.equal(timers.durations.at(-1), taskDuration, `${task}'s timer must be its own full duration`);
 
         timers.complete(); // advance past the task to whatever comes next
-        // Skip any recovery phase to get back to the next preparation phase -
-        // its timer completing only makes it ready to proceed, so an
-        // explicit proceedFromRecovery() (the "Proceed" button click) is
-        // what actually moves past it.
-        while (controller.getCurrentPhase() && controller.getCurrentPhase().phaseType === 'recovery') {
+        // Skip any REST screen(s) to get back to the next preparation phase.
+        // phaseType 'recovery' needs an explicit proceedFromRecovery() (the
+        // "Proceed" button click) after its timer completes - it doesn't
+        // auto-advance. 'recovery-info' (RECOVERY_AFTER_MOTOR_INFO only)
+        // auto-advances like any normal timed phase, so timers.complete()
+        // alone is enough for it.
+        while (
+            controller.getCurrentPhase()
+            && (controller.getCurrentPhase().phaseType === 'recovery' || controller.getCurrentPhase().phaseType === 'recovery-info')
+        ) {
+            const skippedPhaseType = controller.getCurrentPhase().phaseType;
             timers.complete();
-            controller.proceedFromRecovery();
+            if (skippedPhaseType === 'recovery') {
+                controller.proceedFromRecovery();
+            }
         }
     }
 
@@ -481,7 +498,8 @@ test('cognitive task timing does not start during preparation - only once the ac
     timers.complete(); // -> MOTOR_BASELINE
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
 
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
     assert.equal(controller.getCurrentSubtractionTask(), null, 'cognitive timing must not be running during preparation');
@@ -579,8 +597,8 @@ test('Bug fix: phases genuinely wait for real elapsed time before advancing (use
 
     const elapsedMs = Date.now() - startedAt;
     assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_MOTOR');
-    // 120 simulated seconds * 5ms/second = 600ms minimum real wait.
-    assert.ok(elapsedMs >= 500, `expected a genuine wait of ~600ms; only ${elapsedMs}ms actually elapsed`);
+    // 80 simulated seconds * 5ms/second = 400ms minimum real wait.
+    assert.ok(elapsedMs >= 330, `expected a genuine wait of ~400ms; only ${elapsedMs}ms actually elapsed`);
 });
 
 test('onPhaseChange listeners fire on every phase transition, including automatic (timer-driven) ones', () => {
@@ -616,15 +634,15 @@ test('onPhaseTick reports the phase\'s configured duration immediately, then liv
 
     controller.start();
     controller.advance(); // -> PREPARE_MOTOR_BASELINE
-    timers.complete(); // -> MOTOR_BASELINE, duration 120
-    timers.tick(90);
-    timers.tick(45);
+    timers.complete(); // -> MOTOR_BASELINE, duration 80
+    timers.tick(50);
+    timers.tick(20);
 
     const motorBaselineTicks = ticks.filter((t) => t.phaseId === 'MOTOR_BASELINE');
     assert.deepEqual(motorBaselineTicks, [
-        { phaseId: 'MOTOR_BASELINE', remainingSeconds: 120 },
-        { phaseId: 'MOTOR_BASELINE', remainingSeconds: 90 },
-        { phaseId: 'MOTOR_BASELINE', remainingSeconds: 45 }
+        { phaseId: 'MOTOR_BASELINE', remainingSeconds: 80 },
+        { phaseId: 'MOTOR_BASELINE', remainingSeconds: 50 },
+        { phaseId: 'MOTOR_BASELINE', remainingSeconds: 20 }
     ]);
 });
 
@@ -640,7 +658,8 @@ test('getCurrentPhaseRecord() returns the session record for whatever phase is c
 
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     timers.complete(); // -> SUBTRACTION_3
     const record = controller.getCurrentPhaseRecord();
     assert.equal(record.phaseId, 'SUBTRACTION_3');
@@ -765,11 +784,11 @@ test('proceedFromRecovery() advances exactly once, even if called twice in a row
 
     const firstResult = controller.proceedFromRecovery();
     assert.equal(firstResult, true);
-    assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
+    assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_MOTOR_INFO');
 
     const secondResult = controller.proceedFromRecovery();
     assert.equal(secondResult, false, 'a second call must be a no-op');
-    assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3', 'must still be exactly one phase past recovery, not two');
+    assert.equal(controller.getCurrentPhaseId(), 'RECOVERY_AFTER_MOTOR_INFO', 'must still be exactly one phase past recovery, not two');
 });
 
 test('onRecoveryReady fires exactly once per recovery phase, only once its timer completes', () => {
@@ -783,7 +802,8 @@ test('onRecoveryReady fires exactly once per recovery phase, only once its timer
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
     assert.deepEqual(readyPhaseIds, ['RECOVERY_AFTER_MOTOR']);
 
-    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
+    controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
     assert.deepEqual(readyPhaseIds, ['RECOVERY_AFTER_MOTOR'], 'must not fire again for the following, non-recovery phase');
 });
 
