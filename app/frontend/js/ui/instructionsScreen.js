@@ -49,7 +49,7 @@ function countBackBullets(value) {
 
 function countBackAndClickingBullets(value) {
     return [
-        `Continue counting backward by multiples of ${value}.`,
+        `Count backward by multiples of ${value}, starting from a new number.`,
         ...CLICKING_BULLETS
     ];
 }

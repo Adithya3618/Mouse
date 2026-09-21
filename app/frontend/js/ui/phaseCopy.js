@@ -121,7 +121,7 @@ function getPreparationDisplay(phase, startingNumber, startingNumberLabel) {
             return {
                 title: `Count Back by Multiples of ${value} and Clicking`,
                 instruction: '',
-                transitionLines: [`Continue counting back by ${value}…`],
+                transitionLines: [`Count back by ${value} from a new number…`],
                 showTimer: true,
                 // The starting number now shows on the DUAL_TASK_<n> screen
                 // itself instead (see ui/experimentScreen.js's counting
@@ -157,7 +157,7 @@ function getRecoveryDisplay(phase) {
     const paragraphs = nextValue != null
         ? [
             `After this rest, you will count backward by multiples of ${nextValue}, starting from a random number that will appear on the next screen.`,
-            `Once the count-back-only block ends, keep counting backward from the same number as you move into the counting-and-clicking block — do not restart. Watch for the short countdown, then start clicking the targets as soon as they appear while you keep counting.`
+            `Once the count-back-only block ends, watch for the short countdown — you will then be given a new random number to count backward from while clicking the targets as soon as they appear.`
         ]
         : [
             'As you rest, I will explain the three upcoming series of counting backward and counting backward while clicking.',
@@ -187,10 +187,10 @@ function getRecoveryInfoDisplay() {
         title: 'REST',
         instruction: '',
         paragraphs: [
-            'After the counting-only portion, you will immediately begin the counting and clicking portion without a rest period. Continue counting backward from the same number you are currently on. Do not restart from a new number.',
+            'After the counting-only portion, you will immediately begin the counting and clicking portion without a rest period. You will be given a new random number to count backward from for the counting-and-clicking portion.',
             'A 5-second countdown will begin to make sure you are ready for the clicking task. Continue counting backward during this countdown. When the countdown ends, dots will begin randomly appearing and disappearing on the screen.',
             'As soon as you see the dots, continue counting backward and begin clicking them as quickly and accurately as possible. Continue performing both tasks at the same time—counting backward and clicking the dots—until the timer runs out. Complete as many count-backs and click as many dots as possible within the allotted time.',
-            'You will follow this same procedure for counting backward by 3, by 7, and by 17. For each series, you will first count backward without clicking and then immediately continue counting backward while clicking.',
+            'You will follow this same procedure for counting backward by 3, by 7, and by 17. For each series, you will first count backward without clicking, then be given a new random number to count backward from while clicking.',
             'Remember to speak clearly and at an audible volume throughout each task so that the recording can capture each number you say.'
         ],
         showTimer: true,

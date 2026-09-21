@@ -140,7 +140,14 @@ export class ExperimentController {
         this._currentSubtractionTask = null;
         this._currentCognitiveAudioSession = null;
         this._lastStartingNumber = null;
-        this._conditionStartingNumbers = {};
+        // Keyed by "<subtractionValue>:<taskFamily>" (see
+        // _taskFamilyFor/_getOrCreateStartingNumber below) - one independent
+        // random number per real task phase (6 total: count-back-only and
+        // count-back-and-clicking for each of 3/7/17), not one shared
+        // per subtraction value. A PREPARE_<task>_<n> phase and the task
+        // phase it leads into still share one number (same key), so the
+        // "get ready" screen previews the number that phase is about to use.
+        this._taskStartingNumbers = {};
 
         // Every in-flight recording upload/transcription/scoring promise
         // for this session, in phase order - NEVER awaited here (that would
@@ -225,7 +232,7 @@ export class ExperimentController {
         });
         this._fsm.reset();
         this._lastStartingNumber = null;
-        this._conditionStartingNumbers = {};
+        this._taskStartingNumbers = {};
         this._pendingCognitiveProcessing = [];
         this._logger(`Experiment initialized (session ${this._session.sessionId})`);
         return this._session;
@@ -288,9 +295,17 @@ export class ExperimentController {
         // (see phaseCopy.js). Starting the SubtractionTask itself (real
         // cognitive-task timing) is gated separately on cognitiveActive,
         // so it does NOT start during preparation - only once the actual
-        // SUBTRACTION_<n>/DUAL_TASK_<n> phase begins.
+        // SUBTRACTION_<n>/DUAL_TASK_<n> phase begins. Independently
+        // randomized per task family (see _taskFamilyFor) - PREPARE_SUBTRACTION_<n>
+        // and SUBTRACTION_<n> share one number, PREPARE_DUAL_TASK_<n> and
+        // DUAL_TASK_<n> share a separate one, so the count-back-only and
+        // count-back-and-clicking blocks of the same condition never reuse
+        // each other's number.
         if (phaseDescriptor.subtractionValue != null) {
-            extra.startingNumber = this._getOrCreateStartingNumber(phaseDescriptor.subtractionValue);
+            extra.startingNumber = this._getOrCreateStartingNumber(
+                phaseDescriptor.subtractionValue,
+                this._taskFamilyFor(phaseDescriptor)
+            );
         }
 
         if (phaseDescriptor.cognitiveActive && extra.startingNumber != null) {
@@ -470,16 +485,27 @@ export class ExperimentController {
     // value is encountered (during SUBTRACTION_<n>) and reused for that
     // same condition's DUAL_TASK_<n> phase. It is guaranteed to differ
     // from the previous condition's number.
-    _getOrCreateStartingNumber(subtractionValue) {
-        if (this._conditionStartingNumbers[subtractionValue] == null) {
+    // 'preparation' phases don't carry their own task identity - they
+    // borrow the type of the task they precede, so PREPARE_SUBTRACTION_<n>
+    // groups with SUBTRACTION_<n> ('cognitive') and PREPARE_DUAL_TASK_<n>
+    // groups with DUAL_TASK_<n> ('dual-task').
+    _taskFamilyFor(phaseDescriptor) {
+        return phaseDescriptor.phaseType === 'preparation'
+            ? phaseDescriptor.precedesPhaseType
+            : phaseDescriptor.phaseType;
+    }
+
+    _getOrCreateStartingNumber(subtractionValue, taskFamily) {
+        const key = `${subtractionValue}:${taskFamily}`;
+        if (this._taskStartingNumbers[key] == null) {
             const number = this._randomNumberGenerator(
                 this._config.randomStartingNumberRange,
                 this._lastStartingNumber
             );
-            this._conditionStartingNumbers[subtractionValue] = number;
+            this._taskStartingNumbers[key] = number;
             this._lastStartingNumber = number;
         }
-        return this._conditionStartingNumbers[subtractionValue];
+        return this._taskStartingNumbers[key];
     }
 
     // --- reporting hooks -------------------------------------------------

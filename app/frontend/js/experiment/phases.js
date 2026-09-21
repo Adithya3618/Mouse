@@ -25,11 +25,15 @@
 // the count-back-only -> dual-task transition procedure, on its own page.
 // RECOVERY_AFTER_DUAL_3/_7 have no such second screen.
 //
-// The random starting number for a condition is generated the moment its
-// PREPARE_SUBTRACTION_<n> phase begins (as soon as its subtractionValue is
-// known - see experimentController.js) and reused for SUBTRACTION_<n>,
-// PREPARE_DUAL_TASK_<n>, and DUAL_TASK_<n> - this is what the protocol
-// calls "Random Number #1/#2/#3"; it is not a separate phase.
+// PROTOCOL CHANGE (see experimentController.js#_taskFamilyFor): the
+// starting number is now independently randomized per real task phase - 6
+// numbers total (count-back-only and count-back-and-clicking for each of
+// 3/7/17), not the 3 numbers ("Random Number #1/#2/#3") the protocol
+// previously called for. A PREPARE_SUBTRACTION_<n>/PREPARE_DUAL_TASK_<n>
+// phase still shares its number with the task phase it immediately leads
+// into (so the "get ready" screen previews the correct upcoming number),
+// but SUBTRACTION_<n> and DUAL_TASK_<n> no longer share one - update the
+// written protocol document to match this before running further sessions.
 
 import {
     buildMotorBaselineMetadata,

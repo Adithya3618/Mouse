@@ -222,14 +222,14 @@ test('5, 6, 7. Each subtraction condition gets a number in range, and each diffe
     assert.notEqual(numberFor(17), numberFor(7));
 });
 
-test('DUAL_TASK_<n> reuses its condition\'s starting number rather than generating a new one', () => {
+test('DUAL_TASK_<n> gets its own independently-generated starting number, different from its condition\'s SUBTRACTION_<n> number', () => {
     const { controller, timers } = createTestController();
     runFullExperiment(controller, timers);
     const session = controller.getSession();
     for (const value of [3, 7, 17]) {
         const subtraction = session.phases.find((p) => p.phaseId === `SUBTRACTION_${value}`);
         const dualTask = session.phases.find((p) => p.phaseId === `DUAL_TASK_${value}`);
-        assert.equal(dualTask.startingNumber, subtraction.startingNumber);
+        assert.notEqual(dualTask.startingNumber, subtraction.startingNumber);
     }
 });
 
@@ -519,12 +519,17 @@ test('cognitive task timing does not start during preparation - only once the ac
 
     timers.complete(); // -> PREPARE_DUAL_TASK_3
     assert.equal(controller.getCurrentSubtractionTask(), null, 'cognitive timing must stop again during the next preparation');
-    assert.equal(controller.getCurrentPhaseRecord().startingNumber, numberDuringSubtraction, 'same condition, same starting number');
+    // PREPARE_DUAL_TASK_<n>/DUAL_TASK_<n> are their own task family (see
+    // experimentController.js#_taskFamilyFor) - a new, independent number
+    // from SUBTRACTION_<n>'s, not a reuse of it.
+    const numberDuringDualTaskPrep = controller.getCurrentPhaseRecord().startingNumber;
+    assert.notEqual(numberDuringDualTaskPrep, numberDuringSubtraction, 'dual-task block gets its own new starting number');
 
     timers.complete(); // -> DUAL_TASK_3
     const dualTaskCognitiveTask = controller.getCurrentSubtractionTask();
     assert.ok(dualTaskCognitiveTask, 'cognitive timing must be running during the dual-task phase too');
     assert.equal(dualTaskCognitiveTask.isRunning(), true);
+    assert.equal(controller.getCurrentPhaseRecord().startingNumber, numberDuringDualTaskPrep, 'DUAL_TASK_3 keeps the number its own preparation screen already previewed');
 });
 
 // --- Regression tests for the mouse-task crash / phase-racing bug report ---

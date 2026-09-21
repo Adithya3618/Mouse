@@ -36,7 +36,7 @@ test('cognitive: falls back to an em dash when no phase record is available yet'
     assert.ok(display.instruction.includes('—'));
 });
 
-test('dual-task: renamed title mentions "and Clicking", instruction mentions both counting and clicking, shows the same starting number', () => {
+test('dual-task: renamed title mentions "and Clicking", instruction mentions both counting and clicking, shows its own starting number', () => {
     const display = getPhaseDisplay(
         { phaseType: 'dual-task', subtractionValue: 17 },
         { startingNumber: 931 }
@@ -144,7 +144,7 @@ test('preparation before count-back-only: two transition lines, running timer sh
     assert.ok(display.transitionLines[1].includes('Count back by 3'));
 });
 
-test('preparation before dual-task: one static transition line (keep counting), running timer shown, no starting number box, no digit countdown', () => {
+test('preparation before dual-task: one static transition line (a new number), running timer shown, no starting number box, no digit countdown', () => {
     const display = getPhaseDisplay(
         { phaseType: 'preparation', subtractionValue: 17, precedesPhaseType: 'dual-task' },
         { startingNumber: 812 }
@@ -160,7 +160,11 @@ test('preparation before dual-task: one static transition line (keep counting), 
     // second line was replaced by an actual popping 3/2/1 (see
     // ui/experimentScreen.js#updatePopCountdown), not phaseCopy.js content.
     assert.equal(display.transitionLines.length, 1);
-    assert.ok(display.transitionLines[0].toLowerCase().includes('counting back by 17'));
+    assert.ok(display.transitionLines[0].toLowerCase().includes('count back by 17'));
+    // A fresh, independently-generated number for this block (see
+    // experimentController.js#_taskFamilyFor) - the line must not imply
+    // continuing the count-back-only block's own number.
+    assert.ok(display.transitionLines[0].toLowerCase().includes('new number'));
 });
 
 test('preparation copy never contains a raw phase id', () => {
