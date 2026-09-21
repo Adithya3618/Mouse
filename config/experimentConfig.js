@@ -12,18 +12,18 @@
 export const experimentConfig = {
     // Clicking-only mouse baseline at the start of the experiment
     // ("Clicking Only" on screen; MOTOR_BASELINE internally).
-    motorBaselineDurationSeconds: 120,
+    motorBaselineDurationSeconds: 10,
 
     // The three serial-subtraction conditions, in the order they run.
     subtractionValues: [3, 7, 17],
 
     // Counting-only hold screen for each condition (no mouse task) -
     // "Count Back by N" on screen; SUBTRACTION_<n> internally.
-    subtractionOnlyDurationSeconds: 120,
+    subtractionOnlyDurationSeconds: 10,
 
     // Combined counting + clicking block for each condition -
     // "Count Back by N and Clicking" on screen; DUAL_TASK_<n> internally.
-    dualTaskDurationSeconds: 120,
+    dualTaskDurationSeconds: 10,
 
     // REST break after every count-back-only block and every dual-task
     // block (RECOVERY_AFTER_DUAL_3/_7). There is no separate recovery
@@ -31,7 +31,7 @@ export const experimentConfig = {
     // block (they are joined instead by dualTaskTransitionSeconds below).
     // RECOVERY_AFTER_MOTOR (after clicking-only) uses its own dedicated
     // pair of durations instead - see the two fields directly below.
-    recoveryDurationSeconds: 90,
+    recoveryDurationSeconds: 10,
 
     // RECOVERY_AFTER_MOTOR (the REST before series 1) is split across two
     // screens: the REST explanation itself, then RECOVERY_AFTER_MOTOR_INFO -
@@ -40,8 +40,8 @@ export const experimentConfig = {
     // on its own (no Continue-button gate). These two together are a
     // deliberate 60-second combined budget for the pair - adjust either
     // value to change the split without changing the 60s total.
-    recoveryAfterMotorDurationSeconds: 30,
-    recoveryAfterMotorInfoDurationSeconds: 30,
+    recoveryAfterMotorDurationSeconds: 10,
+    recoveryAfterMotorInfoDurationSeconds: 10,
 
     // Length of the digit countdown (10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 - see
     // ui/phaseCopy.js/ui/experimentScreen.js) shown immediately before the
