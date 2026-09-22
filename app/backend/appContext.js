@@ -17,6 +17,7 @@ const { RecordingRepository } = require('./repositories/recordingRepository');
 const { TranscriptionRepository } = require('./repositories/transcriptionRepository');
 const { ResponseRepository } = require('./repositories/responseRepository');
 const { AuditLogRepository } = require('./repositories/auditLogRepository');
+const { ParticipantDeletionRepository } = require('./repositories/participantDeletionRepository');
 const { createDefaultTranscriptionProvider } = require('./transcription');
 const { SpeechProcessingService } = require('./services/speechProcessingService');
 const { AdminQueryService } = require('./services/adminQueryService');
@@ -31,6 +32,7 @@ function createAppContext({ db, audioStorage, transcriptionProvider, logger = co
     const transcriptionRepository = new TranscriptionRepository(database);
     const responseRepository = new ResponseRepository(database);
     const auditLogRepository = new AuditLogRepository(database);
+    const participantDeletionRepository = new ParticipantDeletionRepository(database);
 
     const resolvedAudioStorage = audioStorage || createAudioStorage({ logger });
     const resolvedTranscriptionProvider = transcriptionProvider || createDefaultTranscriptionProvider(logger);
@@ -53,7 +55,7 @@ function createAppContext({ db, audioStorage, transcriptionProvider, logger = co
         db: database,
         participantRepository, sessionRepository, phaseRepository,
         recordingRepository, transcriptionRepository, responseRepository,
-        auditLogRepository,
+        auditLogRepository, participantDeletionRepository,
         audioStorage: resolvedAudioStorage,
         transcriptionProvider: resolvedTranscriptionProvider,
         speechProcessingService,

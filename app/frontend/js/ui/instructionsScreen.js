@@ -27,7 +27,7 @@
 
 import { show, hide } from './transition.js';
 import { getExperimentController } from '../experiment/experimentRuntime.js';
-import { loadAudioSrc, initAudioPlayerControls } from './audioPlayer.js';
+import { loadAudioSrc, initAudioPlayerControls, stopAudio } from './audioPlayer.js';
 
 const TOTAL_STEPS = 10;
 
@@ -106,23 +106,32 @@ function renderWalkthrough() {
 
     document.getElementById('instructionsIllustration').hidden = !step.illustration;
 
+    // Disabled (not hidden/removed) on step 1 - see index.html's own
+    // comment on #instructionsBackBtn for why.
+    document.getElementById('instructionsBackBtn').disabled = currentStep === 1;
+
     loadStepAudio(step.audioFile);
 }
 
-// Swaps in the current step's audio file and resets the custom player's
-// display state. If the file fails to load (none exist yet), the whole
-// player row is replaced by a plain text note instead of sitting there
-// broken/silent - see AUDIO_BASE_PATH/this app's own
-// app/frontend/audio/instructions/README.md for the expected filenames.
-// loadAudioSrc/initAudioPlayerControls (see ./audioPlayer.js) are shared
-// with every other "Play Instructions"-style player in the app, addressed
-// by id prefix - e.g. prefix "entry" -> #entryAudioWrap, #entryAudioPlayer, ...
+// Swaps in the current step's audio file, resets the custom player's
+// display state, and auto-plays it (the participant can still pause/replay
+// manually at any time via the untouched Play button - see
+// audioPlayer.js#loadAudioSrc's autoplay option). If the file fails to
+// load (none exist yet), the whole player row is replaced by a plain text
+// note instead of sitting there broken/silent - see AUDIO_BASE_PATH/this
+// app's own app/frontend/audio/instructions/README.md for the expected
+// filenames. loadAudioSrc/initAudioPlayerControls (see ./audioPlayer.js)
+// are shared with every other "Play Instructions"-style player in the app,
+// addressed by id prefix - e.g. prefix "entry" -> #entryAudioWrap,
+// #entryAudioPlayer, ... - only this walkthrough's own "instructions"
+// prefix autoplays; the others keep their existing manual-only behavior.
 function loadStepAudio(audioFile) {
-    loadAudioSrc('instructions', AUDIO_BASE_PATH + audioFile);
+    loadAudioSrc('instructions', AUDIO_BASE_PATH + audioFile, { autoplay: true });
 }
 
 export function initInstructionsScreen() {
     const continueBtn = document.getElementById('continueBtn');
+    const backBtn = document.getElementById('instructionsBackBtn');
     const skipBtn = document.getElementById('skipInstructionsBtn');
     const screenInstructions = document.getElementById('screen-instructions');
     const controller = getExperimentController();
@@ -138,8 +147,26 @@ export function initInstructionsScreen() {
     // experimentScreen.js's own onPhaseChange subscription - see that
     // file's preExperimentScreens list - so no manual hide() is needed here.
     function finishInstructionsWalkthrough() {
+        // Stop this walkthrough's auto-playing narration before leaving the
+        // screen - otherwise it would keep playing in the background over
+        // whatever comes next.
+        stopAudio('instructions');
         controller.advance();
     }
+
+    // Moves currentStep - the one source of truth renderWalkthrough() reads
+    // for the timeline highlight and every piece of right-side content -
+    // backward by one step. Disabled on step 1 (see renderWalkthrough), so
+    // this never runs with currentStep already at 1. Re-running
+    // renderWalkthrough() is also what stops the current step's audio and
+    // loads/autoplays the previous step's (same loadStepAudio() call
+    // Continue already uses) - no separate audio handling needed.
+    backBtn.addEventListener('click', () => {
+        if (currentStep > 1) {
+            currentStep -= 1;
+            renderWalkthrough();
+        }
+    });
 
     continueBtn.addEventListener('click', () => {
         if (currentStep < TOTAL_STEPS) {

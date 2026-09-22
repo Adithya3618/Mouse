@@ -113,6 +113,44 @@ class LocalFilesystemAudioStorage {
         return fsPromises.stat(this.resolveAbsolutePath(relativePath));
     }
 
+    // Genuinely removes both copies (primary and mirror) from disk - not
+    // part of the normal save/read path, used only by the explicit admin
+    // hard-delete route (routes/admin.js) after the corresponding database
+    // rows have already been removed. Best-effort per file: a file that's
+    // already missing (ENOENT) is not an error (the end state - "not on
+    // disk" - is already what's wanted); any other error is collected and
+    // returned rather than thrown, so one bad file among several never
+    // aborts deleting the rest.
+    async delete(relativePath) {
+        const errors = [];
+        let primaryDeleted = false;
+        let mirrorDeleted = false;
+
+        try {
+            await fsPromises.unlink(this.resolveAbsolutePath(relativePath));
+            primaryDeleted = true;
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                primaryDeleted = true;
+            } else {
+                errors.push(`primary: ${error.message}`);
+            }
+        }
+
+        try {
+            await fsPromises.unlink(path.join(this._mirrorDir, relativePath));
+            mirrorDeleted = true;
+        } catch (error) {
+            if (error.code === 'ENOENT') {
+                mirrorDeleted = true;
+            } else {
+                errors.push(`mirror: ${error.message}`);
+            }
+        }
+
+        return { primaryDeleted, mirrorDeleted, errors };
+    }
+
     // Whether the mirror copy exists and matches the primary's size - used
     // only for diagnostics/tests, never on the normal read path.
     async verifyMirror(relativePath) {

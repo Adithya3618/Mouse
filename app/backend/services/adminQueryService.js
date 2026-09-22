@@ -108,10 +108,28 @@ class AdminQueryService {
             ? 'No sessions'
             : (sessions.every((s) => s.completionStatus === 'Complete') ? 'Complete' : 'Incomplete');
 
+        // The single stored timestamp the dashboard's Date/Time columns
+        // format (js/admin/participantsList.js) - never regenerated on the
+        // frontend. start_time (set once, client-side, at the moment the
+        // participant actually began the session - see
+        // js/data/sessionData.js#createSession) is preferred; created_at
+        // (always present, server-set when the session row was first
+        // written) is the fallback for the rare case a session exists with
+        // no start_time yet. Comparing ISO 8601 strings lexicographically
+        // is valid chronological ordering as long as every value uses the
+        // same format, which both of these always do.
+        const latestSessionAt = sessionRows.length > 0
+            ? sessionRows.reduce((latest, row) => {
+                const candidate = row.start_time || row.created_at;
+                return !latest || candidate > latest ? candidate : latest;
+            }, null)
+            : null;
+
         return {
             participantId: participant.id,
             participantCode: participant.participant_code,
             sessionCount: sessions.length,
+            latestSessionAt,
             completionStatus,
             needsReview: sessions.some((s) => s.needsReview),
             sessions: sessions.map(({ responses, ...rest }) => rest), // response rows omitted from the list view - fetched via session detail

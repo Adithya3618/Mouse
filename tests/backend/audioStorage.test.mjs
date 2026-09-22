@@ -69,6 +69,26 @@ test('save() is not committed (does not resolve) if the primary write cannot be 
     }
 });
 
+test('delete() removes both the primary and mirror copies', async () => {
+    const storage = makeTempStorage();
+    const relativePath = await storage.save({ sessionId: 'session-1', phaseRecordId: 'phase-1', buffer: Buffer.from('to be deleted'), extension: 'webm' });
+    assert.equal(await storage.exists(relativePath), true);
+
+    const result = await storage.delete(relativePath);
+    assert.equal(result.primaryDeleted, true);
+    assert.equal(result.mirrorDeleted, true);
+    assert.deepEqual(result.errors, []);
+    assert.equal(await storage.exists(relativePath), false);
+});
+
+test('delete() on a path that was never saved is a no-op, not an error - the end state (not on disk) is already true', async () => {
+    const storage = makeTempStorage();
+    const result = await storage.delete('session-does-not-exist/nope.webm');
+    assert.equal(result.primaryDeleted, true);
+    assert.equal(result.mirrorDeleted, true);
+    assert.deepEqual(result.errors, []);
+});
+
 test('a mirror-write failure does not prevent save() from resolving - the primary copy (already verified) is what matters', async () => {
     const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'audio-storage-test-'));
     const mirrorDir = fs.mkdtempSync(path.join(os.tmpdir(), 'audio-storage-mirror-test-'));

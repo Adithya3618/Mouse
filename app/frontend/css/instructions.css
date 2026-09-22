@@ -356,6 +356,18 @@
   border-radius:10px;
   max-width:640px;
 }
+/* Step 1's Back button (css/intake.css's shared .step-back, otherwise
+   never disabled anywhere else in the app) - grayscale-only muted/disabled
+   state, kept in place rather than hidden so it doesn't shift
+   #continueBtn's position (see index.html's own comment on #instructionsBackBtn). */
+#instructionsBackBtn:disabled{
+  color:var(--line);
+  cursor:not-allowed;
+}
+#instructionsBackBtn:disabled:hover{
+  color:var(--line);
+}
+
 @media (max-width:860px){
   .instructions-columns{
     flex-direction:column;

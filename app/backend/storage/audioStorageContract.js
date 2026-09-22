@@ -21,6 +21,18 @@
 //   resolveAbsolutePath(key) -> string   (local filesystem implementations only)
 //   readStream(key, {start, end}?) -> Promise<Readable>   (all implementations)
 // An implementation must provide at least one of the two.
+//
+// delete(key) -> Promise<{errors: string[], ...}> is also available on both
+// real implementations (LocalFilesystemAudioStorage,
+// ObjectStorageAudioStorage), used only by the explicit admin hard-delete
+// route (routes/admin.js) after the corresponding database rows are
+// removed. Deliberately NOT added to REQUIRED_METHODS below - several
+// tests elsewhere construct a minimal fake AudioStorage (save/read/exists/
+// stat only) for unrelated scenarios that never delete anything; making it
+// required here would force every one of those fakes to grow a no-op
+// delete() for no benefit. Code that actually needs to delete audio calls
+// it directly and can assume it exists on whichever real implementation
+// config/storageConfig.js wires up.
 
 const REQUIRED_METHODS = ['save', 'read', 'exists', 'stat'];
 

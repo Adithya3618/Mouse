@@ -53,6 +53,7 @@ export function initResultsScreen() {
 // something the participant watches happen" rule. This NEVER shows the
 // participant a raw transcript - only whether processing is still running.
 export async function renderResults(session, controller) {
+    renderCompleteHeading(session);
     renderMousePerformanceTable(session);
     renderStartingNumbers(session);
     setExportStatus('', false);
@@ -82,6 +83,23 @@ export async function renderResults(session, controller) {
         downloadBtn.disabled = false;
     }
     renderCognitivePerformanceTable(session);
+}
+
+// session.participantCode is the exact value the participant entered at
+// intake (js/data/sessionData.js#createSession) - the same "Participant ID"
+// terminology the admin dashboard uses, never a name (none is collected).
+// Falls back to a participant-ID-free heading (per spec) if it's ever
+// missing rather than showing a literal "null"/"undefined".
+function renderCompleteHeading(session) {
+    const heading = document.getElementById('completeHeading');
+    const subtitle = document.getElementById('completeSubtitle');
+    if (!heading || !subtitle) {
+        return;
+    }
+    heading.textContent = session && session.participantCode
+        ? `Thank You, Participant ${session.participantCode}`
+        : 'Thank You for Participating';
+    subtitle.textContent = 'Thank you for participating in the study. Your session is complete.';
 }
 
 function renderCognitivePerformanceTable(session) {

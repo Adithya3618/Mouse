@@ -7,12 +7,11 @@
 //   put(key, buffer) -> Promise<void>
 //   get(key) -> Promise<Buffer>
 //   head(key) -> Promise<{size: number} | null>   (null/rejects if missing)
-//   delete(key) -> Promise<void>                   (not currently called by
-//                                                    this class - no code
-//                                                    path ever deletes
-//                                                    audio; kept in the
-//                                                    contract for a future
-//                                                    explicit admin action)
+//   delete(key) -> Promise<void>                   (called only by the
+//                                                    explicit admin
+//                                                    hard-delete route -
+//                                                    see this class's own
+//                                                    delete() method)
 //   getStream(key) -> Promise<Readable>            (optional)
 //
 // No client adapter is implemented yet (see docs/storage-architecture.md) -
@@ -39,6 +38,14 @@ class ObjectStorageAudioStorage {
         if (!client) {
             throw new Error('ObjectStorageAudioStorage requires a client ({put, get, head, delete}) - see this file\'s header comment.');
         }
+        // 'delete' is intentionally NOT required here (unlike put/get/head) -
+        // several existing tests construct a minimal client for scenarios
+        // that never delete anything, and requiring it would force every
+        // one of those to grow a no-op method for no benefit. delete()
+        // below just calls through and surfaces client.delete's own
+        // "not a function" error if a caller that actually needs it was
+        // built without one - same reasoning as audioStorageContract.js's
+        // own delete-is-optional note.
         for (const method of ['put', 'get', 'head']) {
             if (typeof client[method] !== 'function') {
                 throw new Error(`ObjectStorageAudioStorage's client is missing required method: ${method}()`);
@@ -89,6 +96,14 @@ class ObjectStorageAudioStorage {
     // best-effort: a client without native range support just streams the
     // full object and lets the caller slice it, which routes/admin.js
     // already falls back to correctly.
+    // Genuinely removes the object - not part of the normal save/read path,
+    // used only by the explicit admin hard-delete route (routes/admin.js)
+    // after the corresponding database rows have already been removed.
+    async delete(key) {
+        await this._client.delete(key);
+        return { deleted: true, errors: [] };
+    }
+
     async readStream(key, { start, end } = {}) {
         if (typeof this._client.getStream === 'function') {
             return this._client.getStream(key, start != null ? { start, end } : undefined);

@@ -9,9 +9,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { adminFetch } from '../../app/frontend/js/admin/adminApi.js';
 
-function stubBrowserGlobals({ apiBase = '', token = 'stub-token' } = {}) {
+function stubBrowserGlobals({ apiBase = '', token = 'stub-token', hostname = 'example.com', origin = 'https://example.com' } = {}) {
     const localStore = apiBase ? { mouseApiBaseUrl: apiBase } : {};
-    globalThis.window = { location: { search: '' }, prompt: () => token };
+    globalThis.window = { location: { search: '', hostname, origin }, prompt: () => token };
     globalThis.localStorage = {
         getItem: (key) => (key in localStore ? localStore[key] : null),
         setItem: (key, value) => { localStore[key] = String(value); },
@@ -57,6 +57,33 @@ test('a same-origin 404 with an HTML body (no backend at this origin, apiBase no
     await assert.rejects(
         () => adminFetch('/api/admin/participants'),
         /No backend reachable at this page's own origin.*\?apiBase=/s
+    );
+    removeBrowserGlobals();
+});
+
+test('a same-origin 404 with an HTML body on localhost throws a "restart your local server" message instead, never suggesting ?apiBase=', async () => {
+    stubBrowserGlobals({ apiBase: '', hostname: 'localhost', origin: 'http://localhost:3000' });
+    stubFetch(() => htmlNotFoundResponse());
+
+    await assert.rejects(
+        () => adminFetch('/api/admin/participants/some-id/hard-delete'),
+        (error) => {
+            assert.match(error.message, /restart/i);
+            assert.match(error.message, /localhost:3000/);
+            assert.ok(!/\?apiBase=/.test(error.message), 'must not suggest ?apiBase= when a real local backend is right there, just running stale code');
+            return true;
+        }
+    );
+    removeBrowserGlobals();
+});
+
+test('the same "restart your local server" message also applies on 127.0.0.1', async () => {
+    stubBrowserGlobals({ apiBase: '', hostname: '127.0.0.1', origin: 'http://127.0.0.1:3000' });
+    stubFetch(() => htmlNotFoundResponse());
+
+    await assert.rejects(
+        () => adminFetch('/api/admin/participants'),
+        /restart/i
     );
     removeBrowserGlobals();
 });

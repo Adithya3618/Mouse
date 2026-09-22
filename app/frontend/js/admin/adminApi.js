@@ -67,15 +67,32 @@ export async function adminFetch(path, options = {}) {
         // res.status(404).json({...}) - that case is deliberately left to
         // fall through to the generic handling below, unchanged, so
         // "participant not found" still shows correctly). This is instead
-        // Express's own default "Cannot GET ..." HTML page, meaning there
-        // is no backend at all at this page's own origin - e.g. this page
-        // is served by api/frontend.js on Vercel (frontend-only by design -
-        // see docs/storage-architecture.md), and no ?apiBase=<url> has been
-        // configured yet to point it at the real one.
+        // Express's own default "Cannot GET/POST ..." HTML page, meaning
+        // Express itself has no route matching this path. Two genuinely
+        // different situations produce this, and they need different
+        // advice - a plain "add ?apiBase=" suggestion is actively wrong for
+        // the first one:
+        //
+        //  1. This page IS being served by this project's own Express
+        //     server (same origin - e.g. http://localhost:3000/admin/), but
+        //     that server process is running OLDER code than what's on disk
+        //     (Node never hot-reloads a running process - a route added or
+        //     changed in routes/admin.js needs the server restarted to take
+        //     effect). Recognized here by a localhost/127.0.0.1 hostname,
+        //     which a frontend-only static host (Vercel, etc.) never has.
+        //  2. This page is served by something with NO backend of its own
+        //     at all - e.g. api/frontend.js on Vercel (frontend-only by
+        //     design - see docs/storage-architecture.md) - where
+        //     ?apiBase=<url> genuinely is the fix.
+        const looksLikeLocalDevServer = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
         throw new Error(
-            `No backend reachable at this page's own origin for ${path}. If the backend runs elsewhere ` +
-            `(a local/tunneled server, or a separate UF deployment), reload this page with ` +
-            `?apiBase=<your-backend-url> added to the URL once - it will be remembered for future visits.`
+            looksLikeLocalDevServer
+                ? `${path} returned 404 from this page's own local server (${window.location.origin}). ` +
+                  `This backend is reachable, but doesn't know this route yet - restart it ` +
+                  `(stop the running "npm start" and run it again) to pick up recent server-side changes, then retry.`
+                : `No backend reachable at this page's own origin for ${path}. If the backend runs elsewhere ` +
+                  `(a local/tunneled server, or a separate UF deployment), reload this page with ` +
+                  `?apiBase=<your-backend-url> added to the URL once - it will be remembered for future visits.`
         );
     }
     if (!response.ok) {

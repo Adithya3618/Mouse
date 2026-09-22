@@ -243,9 +243,22 @@
       </div>
       <p class="instructions-audio-fallback" id="instructionsAudioFallback" hidden>Audio not yet available.</p>
 
-      <button class="begin" id="continueBtn">
-        Continue <span class="arrow">→</span>
-      </button>
+      <!-- Same .step-nav/.step-back pattern already used by the intake
+           wizard's own Back buttons (see css/intake.css) - reused as-is so
+           this stays visually consistent with the rest of the app, no new
+           button style needed. On step 1, Back is disabled rather than
+           hidden/removed (see js/ui/instructionsScreen.js#renderWalkthrough) -
+           .step-nav is justify-content:space-between, so removing Back from
+           the flex row entirely would shift Continue's position between
+           step 1 and every other step; disabling instead keeps both
+           buttons' positions stable across all 10 steps while still making
+           step 1 impossible to back out of. -->
+      <div class="step-nav">
+        <button type="button" class="step-back" id="instructionsBackBtn">← Back</button>
+        <button class="begin" id="continueBtn">
+          Continue <span class="arrow">→</span>
+        </button>
+      </div>
     </div>
 
     <!-- Small, deliberately muted shortcut past the whole 10-step preview
@@ -396,8 +409,14 @@
     <!-- Clicking-only lead-in ONLY - a literal 10/9/8/.../1/0 countdown
          (see js/ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE), not a generic
          "3/2/1/BEGIN" - every other lead-in uses #transitionLines above
-         instead. -->
+         instead. This is the only text shown here - body.fullscreen-task
+         (css/experiment-screen.css) hides .task-title/.task-instruction
+         during this phase, by design, so a dedicated heading is used
+         instead of reusing either of those. Static text: this countdown is
+         only ever shown before MOTOR_BASELINE, so there's nothing to
+         branch on. -->
     <div class="prep-countdown" id="prepCountdown" hidden>
+      <p class="prep-countdown-heading">Begin clicking in</p>
       <span class="prep-countdown-value mono" id="prepCountdownValue">10</span>
     </div>
 
@@ -444,8 +463,8 @@
   <div class="complete-panel" id="completePanel" hidden>
 
     <div class="complete-message">
-      <h1>Experiment Complete</h1>
-      <p>Thank you for participating. The experiment has finished.</p>
+      <h1 id="completeHeading">Experiment Complete</h1>
+      <p id="completeSubtitle">Thank you for participating. The experiment has finished.</p>
     </div>
 
     <!-- Shown while each phase's recording is still being uploaded/

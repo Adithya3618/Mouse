@@ -324,11 +324,25 @@ test('TEST 13: participant deletion is only reachable through the authenticated 
     }
 });
 
-// TEST 14: no startup path in the application code may delete research data.
+// TEST 14: no startup path in the application code may delete research data,
+// and DELETE FROM may only appear in the one file explicitly reviewed and
+// designed for it.
 //
-// DROP TABLE / DELETE FROM / TRUNCATE are banned everywhere, no exceptions -
-// the schema is CREATE TABLE IF NOT EXISTS only, and admin deletion is a
-// soft-delete UPDATE (see routes/admin.js), never a DELETE FROM.
+// DROP TABLE / TRUNCATE are banned everywhere, no exceptions - the schema is
+// CREATE TABLE IF NOT EXISTS only.
+//
+// DELETE FROM is banned everywhere EXCEPT
+// app/backend/repositories/participantDeletionRepository.js. That file is
+// the one deliberate, reviewed exception to "research data is never
+// hard-deleted": it implements the explicit, authenticated, confirmation-
+// gated admin hard-delete route (routes/admin.js's own
+// /participants/:id/hard-delete, distinct from the ordinary soft-delete
+// route at /participants/:id/delete, which still only ever UPDATEs
+// deleted_at and remains the reversible default). Every DELETE FROM
+// statement in that one file is scoped to child rows of a single named
+// participant, inside one BEGIN/COMMIT/ROLLBACK transaction - see that
+// file's own header for the full reasoning. Any DELETE FROM appearing in
+// a DIFFERENT file is exactly what this test still exists to catch.
 //
 // fs.unlinkSync/fs.rmSync/fs.rmdirSync are allowed ONLY inside
 // researchDatabase.js, and ONLY because that file's own file-removal calls
@@ -339,10 +353,15 @@ test('TEST 13: participant deletion is only reachable through the authenticated 
 // (quarantined) via fs.renameSync, never deleted, by deliberate design (see
 // the "quarantine" comment in openResearchDatabase()). Any such call
 // appearing in a NEW location is exactly what this test exists to catch.
+// (audioStorage.js's own delete() - the admin hard-delete route's audio-file
+// removal - uses fsPromises.unlink, the async/non-Sync form, which this
+// scan deliberately does not match; see that file's own delete() comment.)
 test('TEST 14: no application source file contains a destructive database/filesystem operation on startup paths', () => {
     const projectRoot = path.join(import.meta.dirname, '../..');
     const scanDirs = ['app/backend', 'api'];
-    const alwaysBanned = [/DROP\s+TABLE/i, /DELETE\s+FROM/i, /TRUNCATE/i];
+    const alwaysBanned = [/DROP\s+TABLE/i, /TRUNCATE/i];
+    const deleteFromPattern = /DELETE\s+FROM/i;
+    const deleteFromAllowedIn = new Set(['app/backend/repositories/participantDeletionRepository.js']);
     const fileRemovalPatterns = [/\bfs\.unlinkSync\s*\(/, /\bfs\.rmSync\s*\(/, /\bfs\.rmdirSync\s*\(/, /\brequire\(['"]child_process['"]\).*rm\s+-rf/];
     const fileRemovalAllowedIn = new Set(['app/backend/database/researchDatabase.js']);
 
@@ -370,6 +389,9 @@ test('TEST 14: no application source file contains a destructive database/filesy
                 if (pattern.test(content)) {
                     offenders.push(`${relative}: matches ${pattern}`);
                 }
+            }
+            if (!deleteFromAllowedIn.has(relative) && deleteFromPattern.test(content)) {
+                offenders.push(`${relative}: matches ${deleteFromPattern} (DELETE FROM is only reviewed/allowed in participantDeletionRepository.js)`);
             }
             if (!fileRemovalAllowedIn.has(relative)) {
                 for (const pattern of fileRemovalPatterns) {

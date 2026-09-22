@@ -21,6 +21,11 @@ async function startAdminServer({ token = 'test-admin-token' } = {}) {
     const context = createAppContext({ db, audioStorage, transcriptionProvider: new StubTranscriptionProvider() });
 
     const app = express();
+    // Matches app/backend/server.js's own middleware order - without this,
+    // req.body is always undefined for any POST route, which nothing in
+    // this file exercised until the hard-delete tests below (the first
+    // ones here to actually send a JSON body).
+    app.use(express.json());
     app.use('/api/admin', adminAuth, createAdminRouter(context));
 
     const server = await new Promise((resolve) => {
@@ -202,6 +207,148 @@ test('POST /api/admin/recordings/:id/reprocess creates a new version without tou
 
         const audioAfterReprocess = await context.audioStorage.read(recording.storage_path);
         assert.equal(Buffer.compare(originalAudio, audioAfterReprocess), 0, 'the original audio file is never modified by reprocessing');
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants exposes latestSessionAt as the raw stored timestamp, not frontend-generated', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        const { session } = await seedSession(context, { participantCode: 'P007', sessionId: 'session-7', transcriptText: '944 941 938' });
+
+        const all = await fetch(`${baseUrl}/api/admin/participants`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        const p007 = all.participants.find((p) => p.participantCode === 'P007');
+        // seedSession() never passes startTime, so this must be the
+        // session's own created_at (server-set at row-creation time) -
+        // exactly one of the two real stored columns adminQueryService.js
+        // reads, never a value invented at request time.
+        const storedSession = await context.sessionRepository.getById(session.id);
+        assert.equal(p007.latestSessionAt, storedSession.created_at);
+        assert.ok(p007.latestSessionAt, 'latestSessionAt must be present for a participant with a session');
+    } finally {
+        await close();
+    }
+});
+
+// Hard-delete tests use their own disposable participant codes (never
+// touching the real data/db or data/audio directories - startAdminServer()
+// above gives every test its own :memory: database and a freshly
+// mkdtempSync()'d temp directory for audio, discarded when the test ends).
+test('POST /api/admin/participants/:id/hard-delete requires exact participant-code confirmation and deletes nothing without it', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        const { participant, recording } = await seedSession(context, { participantCode: 'DELETE-TEST-1', sessionId: 'del-session-1', transcriptText: '944 941 938' });
+
+        const wrongConfirm = await fetch(`${baseUrl}/api/admin/participants/${participant.id}/hard-delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: 'NOT-THE-CODE' })
+        });
+        assert.equal(wrongConfirm.status, 400);
+
+        // Nothing was touched - the participant, its session, and its
+        // recording (including the audio bytes on disk) all still exist.
+        assert.ok(await context.participantRepository.getById(participant.id));
+        assert.ok(await context.recordingRepository.getById(recording.id));
+        assert.ok(await context.audioStorage.exists(recording.storage_path));
+    } finally {
+        await close();
+    }
+});
+
+test('POST /api/admin/participants/:id/hard-delete on an unknown id returns 404', async () => {
+    const { close, baseUrl, token } = await startAdminServer();
+    try {
+        const response = await fetch(`${baseUrl}/api/admin/participants/does-not-exist/hard-delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: 'whatever' })
+        });
+        assert.equal(response.status, 404);
+    } finally {
+        await close();
+    }
+});
+
+test('POST /api/admin/participants/:id/hard-delete genuinely removes the participant and every associated row and audio file', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        const { participant, session, phase, recording } = await seedSession(context, { participantCode: 'DELETE-TEST-2', sessionId: 'del-session-2', transcriptText: '944 941 938' });
+        const transcription = await context.transcriptionRepository.getLatestForRecording(recording.id);
+        const processingRuns = await context.responseRepository.listProcessingRunsForTranscription(transcription.id);
+        assert.ok(processingRuns.length > 0, 'test setup sanity check: seedSession() must have produced a processing run');
+        const responsesBefore = await context.responseRepository.listResponsesForRun(processingRuns[0].id);
+        assert.ok(responsesBefore.length > 0, 'test setup sanity check: seedSession() must have produced responses');
+
+        // Audio actually exists on disk (primary + mirror) before deletion.
+        assert.ok(await context.audioStorage.exists(recording.storage_path));
+        const primaryPath = context.audioStorage.resolveAbsolutePath(recording.storage_path);
+        assert.ok(fs.existsSync(primaryPath), 'primary audio file must exist before deletion');
+
+        const response = await fetch(`${baseUrl}/api/admin/participants/${participant.id}/hard-delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: participant.participant_code })
+        });
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.participantCode, 'DELETE-TEST-2');
+        assert.equal(body.counts.sessions, 1);
+        assert.equal(body.counts.phases, 1);
+        assert.equal(body.counts.recordings, 1);
+        assert.equal(body.counts.transcriptions, 1);
+        assert.equal(body.counts.processingRuns, processingRuns.length);
+        assert.equal(body.counts.responses, responsesBefore.length);
+        assert.equal(body.filesDeleted, 1);
+        assert.deepEqual(body.fileWarnings, []);
+
+        // Every row, at every level, is genuinely gone - not soft-deleted,
+        // not merely hidden from a list query.
+        assert.equal(await context.participantRepository.getById(participant.id), null);
+        assert.equal(await context.sessionRepository.getById(session.id), null);
+        assert.equal(await context.phaseRepository.getById(phase.id), null);
+        assert.equal(await context.recordingRepository.getById(recording.id), null);
+        assert.equal(await context.transcriptionRepository.getById(transcription.id), null);
+        for (const run of processingRuns) {
+            assert.equal(await context.responseRepository.getProcessingRunById(run.id), null);
+        }
+        assert.deepEqual(await context.responseRepository.listResponsesForRun(processingRuns[0].id), []);
+
+        // The audio file is genuinely removed from disk (both the primary
+        // copy and its mirror), not just dereferenced in the database.
+        assert.equal(await context.audioStorage.exists(recording.storage_path), false);
+        assert.equal(fs.existsSync(primaryPath), false);
+
+        // The participant no longer appears in the dashboard list.
+        const all = await fetch(`${baseUrl}/api/admin/participants`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(all.participants.some((p) => p.participantCode === 'DELETE-TEST-2'), false);
+
+        // An audit trail survives even though the participant row itself
+        // does not - admin_audit_log has no FK to participants, by design
+        // (see repositories/auditLogRepository.js).
+        const auditEntries = await context.auditLogRepository.listForTarget('participant', participant.id);
+        assert.ok(auditEntries.some((e) => e.action === 'participant_hard_delete'));
+    } finally {
+        await close();
+    }
+});
+
+test('POST /api/admin/participants/:id/hard-delete on a participant with no sessions deletes just the participant row, with no error', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        const participant = await context.participantRepository.upsertByCode('DELETE-TEST-NO-SESSIONS');
+
+        const response = await fetch(`${baseUrl}/api/admin/participants/${participant.id}/hard-delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: participant.participant_code })
+        });
+        assert.equal(response.status, 200);
+        const body = await response.json();
+        assert.equal(body.counts.sessions, 0);
+        assert.equal(body.filesDeleted, 0);
+        assert.equal(await context.participantRepository.getById(participant.id), null);
     } finally {
         await close();
     }

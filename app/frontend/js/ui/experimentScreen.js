@@ -23,12 +23,12 @@ const PREPARATION_PHASE_TYPE = 'preparation';
 const COMPLETE_PHASE_ID = 'COMPLETE';
 const INSTRUCTIONS_PHASE_ID = 'INSTRUCTIONS';
 
-// Only RECOVERY_AFTER_MOTOR has a narration mapped so far - the other two
-// REST screens (RECOVERY_AFTER_DUAL_3/7, the short "Next Task" versions)
-// get no audio player at all until they're explicitly asked for too (see
-// hideAudioPlayer('recovery') below, used for every phase not in this map).
+// All 3 REST screens now have narration mapped. Any phase not listed here
+// gets no audio player at all (see hideAudioPlayer('recovery') below).
 const RECOVERY_AUDIO_FILE_BY_PHASE_ID = {
-    RECOVERY_AFTER_MOTOR: '/audio/experiment/recovery-after-motor.mp3'
+    RECOVERY_AFTER_MOTOR: '/audio/experiment/recovery-after-motor.mp3',
+    RECOVERY_AFTER_DUAL_3: '/audio/experiment/recovery-after-dual-3.mp3',
+    RECOVERY_AFTER_DUAL_7: '/audio/experiment/recovery-after-dual-7.mp3'
 };
 
 // Task-status pills only make sense for the three phases where the
@@ -292,7 +292,13 @@ export function initExperimentScreen() {
 
         const recoveryAudioFile = RECOVERY_AUDIO_FILE_BY_PHASE_ID[phase.phaseId];
         if (recoveryAudioFile) {
-            loadAudioSrc('recovery', recoveryAudioFile);
+            // Same opt-in autoplay as the Instructions walkthrough (see
+            // ui/instructionsScreen.js) - the Play/Pause button stays fully
+            // usable as a manual override either way. Leaving this screen
+            // already stops the audio on its own: the next phase change
+            // finds no mapped file for the new phaseId and falls through
+            // to hideAudioPlayer('recovery') below, which pauses it.
+            loadAudioSrc('recovery', recoveryAudioFile, { autoplay: true });
         } else {
             hideAudioPlayer('recovery');
         }

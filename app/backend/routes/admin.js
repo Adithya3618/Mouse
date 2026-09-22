@@ -23,7 +23,7 @@ const SORT_ALIASES = {
     participant: 'participantCode'
 };
 
-function createAdminRouter({ adminQueryService, recordingRepository, phaseRepository, audioStorage, speechProcessingService, participantRepository, auditLogRepository }) {
+function createAdminRouter({ adminQueryService, recordingRepository, phaseRepository, audioStorage, speechProcessingService, participantRepository, auditLogRepository, participantDeletionRepository }) {
     const router = express.Router();
 
     router.get('/participants', async (req, res) => {
@@ -123,6 +123,78 @@ function createAdminRouter({ adminQueryService, recordingRepository, phaseReposi
             res.json({ participantId: restored.id, participantCode: restored.participant_code, deletedAt: restored.deleted_at });
         } catch (error) {
             res.status(500).json({ error: `Restore failed: ${error.message}` });
+        }
+    });
+
+    // GENUINE, IRREVERSIBLE hard deletion of a participant and every row
+    // that hangs off them (sessions/phases/recordings/transcriptions/
+    // processing_runs/responses), plus their audio files - a deliberate
+    // exception to the soft-delete-only /:id/delete route above (see
+    // repositories/participantDeletionRepository.js's own header for why
+    // this is a separate, distinctly-named route rather than a mode on the
+    // existing one: they have fundamentally different safety properties and
+    // must never be confused with each other). Same confirmation
+    // convention as the soft-delete route (the caller must echo back the
+    // participant's own code), and every attempt is audit-logged.
+    //
+    // Order of operations matters for safety: the database rows are
+    // deleted first, inside one transaction (see
+    // participantDeletionRepository.js) - if that fails, it rolls back and
+    // NOTHING is touched, including audio files, so this route never
+    // deletes a file while leaving the database row that pointed at it, or
+    // vice versa in a way that would matter (the reverse - DB rows gone,
+    // a file still on disk - is an orphaned file with no work to reference
+    // it, not a broken/dangling reference). Audio file deletion happens
+    // only after that transaction has already committed, and is
+    // best-effort per file: a file that fails to delete is reported back
+    // as a warning, never re-throws to make the response look like the
+    // (already-successful, already-committed) database deletion failed.
+    router.post('/participants/:id/hard-delete', async (req, res) => {
+        try {
+            const participant = await participantRepository.getById(req.params.id);
+            if (!participant) {
+                res.status(404).json({ error: 'Participant not found.' });
+                return;
+            }
+            const confirm = (req.body || {}).confirm;
+            if (confirm !== participant.participant_code) {
+                res.status(400).json({
+                    error: 'Confirmation did not match. To permanently delete this participant and all associated research data, resend with { "confirm": "<exact participant code>" }.',
+                    participantCode: participant.participant_code
+                });
+                return;
+            }
+
+            const result = await participantDeletionRepository.hardDeleteParticipant(participant.id);
+
+            const fileWarnings = [];
+            for (const storagePath of result.storagePaths) {
+                try {
+                    const outcome = await audioStorage.delete(storagePath);
+                    if (outcome && Array.isArray(outcome.errors) && outcome.errors.length > 0) {
+                        fileWarnings.push(`${storagePath}: ${outcome.errors.join('; ')}`);
+                    }
+                } catch (error) {
+                    fileWarnings.push(`${storagePath}: ${error.message}`);
+                }
+            }
+
+            await auditLogRepository.insert({
+                action: 'participant_hard_delete',
+                targetType: 'participant',
+                targetId: result.participantId,
+                details: { participantCode: result.participantCode, counts: result.counts, fileWarnings }
+            });
+
+            res.json({
+                participantId: result.participantId,
+                participantCode: result.participantCode,
+                counts: result.counts,
+                filesDeleted: result.storagePaths.length - fileWarnings.length,
+                fileWarnings
+            });
+        } catch (error) {
+            res.status(500).json({ error: `Deletion failed: ${error.message}` });
         }
     });
 

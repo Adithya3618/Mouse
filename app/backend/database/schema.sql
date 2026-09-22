@@ -2,11 +2,21 @@
 --   Participant -> Session -> Phase -> Recording (audio) -> Transcription
 --   (versioned) -> Processing run -> Responses (versioned)
 --
--- Nothing here is ever UPDATEd or DELETEd by the application - a
+-- In normal operation, nothing here is ever UPDATEd or DELETEd - a
 -- reprocessed recording gets a brand-new transcriptions/processing_runs/
 -- responses row set (see app/backend/services/speechProcessingService.js),
 -- never an overwrite of the previous one. recordings.storage_path always
--- points at the original, untouched audio file.
+-- points at the original, untouched audio file. participants.deleted_at
+-- (see database/researchDatabase.js's applySchema) is the one routine
+-- exception - a reversible soft delete.
+--
+-- The one IRREVERSIBLE exception to all of the above is the explicit,
+-- authenticated, confirmation-gated admin hard-delete action (routes/admin.js's
+-- /participants/:id/hard-delete, backed by
+-- repositories/participantDeletionRepository.js - see that file's header for
+-- the full reasoning) - it genuinely DELETEs every row descended from one
+-- named participant. tests/backend/researchDatabase.test.mjs's TEST 14
+-- enforces that no other file in the codebase deletes rows this way.
 --
 -- This is the SQLite reference implementation (see app/backend/database/db.js).
 -- Swapping to a UF-approved persistent database means providing a

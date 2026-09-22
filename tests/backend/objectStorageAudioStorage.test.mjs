@@ -66,6 +66,16 @@ test('exists()/stat() reflect what was actually saved', async () => {
     assert.equal(await storage.exists('never/saved.webm'), false);
 });
 
+test('delete() removes the object via the client - used only by the admin hard-delete route', async () => {
+    const storage = new ObjectStorageAudioStorage({ client: makeFakeClient(), logger: () => {} });
+    const key = await storage.save({ sessionId: 's', phaseRecordId: 'p', buffer: Buffer.from('xyz'), extension: 'webm' });
+    assert.equal(await storage.exists(key), true);
+
+    const result = await storage.delete(key);
+    assert.deepEqual(result, { deleted: true, errors: [] });
+    assert.equal(await storage.exists(key), false);
+});
+
 test('save() throws (never resolves) if the client write-verification (head) does not match the written size', async () => {
     // A client whose head() lies about the size after a successful put -
     // simulates a provider that accepted the write but didn't actually

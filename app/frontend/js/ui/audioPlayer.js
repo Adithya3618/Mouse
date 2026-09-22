@@ -33,7 +33,20 @@ export function audioIds(prefix) {
 // Sets/resets a player's source. If the file 404s (or otherwise fails to
 // load), the whole player row is replaced by a plain "Audio not yet
 // available" note instead of sitting there broken/silent.
-export function loadAudioSrc(prefix, src) {
+//
+// { autoplay: true } additionally starts playback immediately once the
+// source is set - used by the Instructions walkthrough so each step's
+// narration starts on its own, without disabling the manual controls
+// (opt-in per call site; every other player - "Before You Begin", the real
+// experiment's REST screen - keeps its existing manual-only behavior
+// unchanged). player.pause() below (called on every invocation, before the
+// new .src is assigned) is what stops the previous step's audio - since
+// every step reuses this one <audio> element rather than creating a new
+// one, there is never more than one instance to manage. If the browser
+// blocks autoplay, play() rejects and is silently swallowed here - the
+// existing Play button (wired once in initAudioPlayerControls, untouched
+// by this) is completely unaffected and still works normally.
+export function loadAudioSrc(prefix, src, { autoplay = false } = {}) {
     const { wrap, fallback, player, playIcon, timeEl } = audioIds(prefix);
 
     show(wrap);
@@ -46,6 +59,21 @@ export function loadAudioSrc(prefix, src) {
         show(fallback);
     };
     player.src = src;
+
+    if (autoplay) {
+        player.play().catch(() => {
+            // Autoplay-restriction rejections (and the AbortError a browser
+            // may raise when a later loadAudioSrc() call interrupts this
+            // same play() before it resolves) are expected, not failures -
+            // the Play button stays available either way.
+        });
+    }
+}
+
+// Pauses a player without touching its .src/current position - used when
+// leaving a screen so its audio doesn't keep playing in the background.
+export function stopAudio(prefix) {
+    audioIds(prefix).player.pause();
 }
 
 // Hides a player entirely (no fallback note either) - for phases/screens

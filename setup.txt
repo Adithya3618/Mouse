@@ -1,0 +1,95 @@
+MOUSE ACCURACY / MOTOR-COGNITIVE DUAL-TASK STUDY - SETUP
+==========================================================
+
+1. PREREQUISITES
+-----------------
+- Node.js (any recent version - no separate framework/build step is needed)
+- npm (comes with Node)
+
+2. INSTALL
+----------
+    cd "Mouse"
+    npm install
+
+3. ENVIRONMENT VARIABLES
+-------------------------
+    cp .env.example .env
+
+Then fill in (both optional for local dev - the app runs fully without them):
+
+- UF_NAVIGATOR_API_KEY
+    Bearer key for the real Whisper transcription API. If left blank,
+    transcription automatically falls back to a stub provider (clearly
+    logged), so the app and test suite still run end-to-end with no
+    network access.
+
+- ADMIN_API_TOKEN
+    Required only to use the /admin research dashboard's API
+    (/api/admin/*). Without it, admin requests are refused - the
+    participant-facing experiment itself is unaffected.
+
+.env is gitignored - never commit real credentials.
+
+4. RUNNING THE APP
+-------------------
+    npm start
+
+Then open:
+- http://localhost:3000        (participant experiment)
+- http://localhost:3000/admin  (research/admin dashboard, needs ADMIN_API_TOKEN)
+
+Default port is 3000. Override with PORT=<port> npm start.
+Data location defaults to the project-relative data/ directory. Override
+with DATA_DIR=<path> npm start (see .env.example for details).
+
+5. RUNNING TESTS
+-----------------
+    npm test
+
+Uses Node's built-in test runner (node --test) - no extra test framework
+install needed.
+
+NOTE: config/experimentConfig.js's phase durations may currently be set to
+short values for fast manual click-through testing, not the real study
+durations. A handful of duration-related tests will fail against short
+values - that's expected during manual testing, not a real bug. Set the
+real durations back before running actual participant sessions.
+
+6. AUDIO FILES
+---------------
+Two folders hold participant-facing narration, served automatically as
+static files (drop a correctly-named file in and it just works - no
+upload step, no restart needed, just reload the page):
+
+  app/frontend/audio/instructions/
+    The 10-step pre-experiment preview walkthrough, plus the
+    "Before You Begin" hand-off screen. See that folder's own README.md
+    for the exact filenames expected.
+
+  app/frontend/audio/experiment/
+    Narration for real timed phases (currently just the first REST
+    screen, RECOVERY_AFTER_MOTOR). See that folder's own README.md.
+
+If a file is missing, the page shows "Audio not yet available" instead of
+a broken player - safe to leave files out until they're ready.
+
+7. PROJECT LAYOUT
+-------------------
+  app/frontend/   Browser-side experiment app (plain HTML/CSS/JS, ES modules)
+  app/backend/    Express server, routes, services, data-export logic
+  config/         Experiment/task configuration (durations, subtraction
+                  values, audio ranges, etc.)
+  data/           Research data - SQLite db/, audio/, audio-secondary/.
+                  NEVER delete or hand-edit this directory.
+  tests/          Test suites (node --test), organized by area
+  docs/           Protocol, data dictionary, developer guide, export format
+  original/       Untouched copy of the pre-reorg original project
+
+8. DATA SAFETY
+----------------
+- data/db, data/audio, data/audio-secondary hold real research data.
+  Never run destructive commands against them (rm -rf, git clean, etc.).
+- The only way results leave the app is the "Download Excel Results"
+  button on the results screen (see docs/data-flow.md) - there is no
+  automatic background save of in-progress session data beyond what the
+  backend already records per phase.

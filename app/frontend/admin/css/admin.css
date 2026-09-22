@@ -239,6 +239,14 @@ button.admin-button {
 button.admin-button:hover { opacity: 0.9; }
 button.admin-button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Genuine hard-delete action (js/admin/participantsList.js) - the one
+   destructive/irreversible button on this dashboard, so it reads clearly
+   different from the (safe, non-destructive) default accent button. */
+button.admin-button.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+
 .status-line {
   font-size: 12px;
   color: var(--slate);

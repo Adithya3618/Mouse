@@ -278,6 +278,14 @@ body.experiment-active {
   padding: 32px 0 48px;
 }
 
+.prep-countdown-heading {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 16px 0;
+  text-align: center;
+}
+
 .prep-countdown-value {
   font-size: 120px;
   font-weight: 700;
@@ -705,6 +713,9 @@ body.fullscreen-task #gameScreen {
   }
   .task-title {
     font-size: 30px;
+  }
+  .prep-countdown-heading {
+    font-size: 20px;
   }
   .prep-countdown-value {
     font-size: 64px;
