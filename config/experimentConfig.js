@@ -12,18 +12,18 @@
 export const experimentConfig = {
     // Clicking-only mouse baseline at the start of the experiment
     // ("Clicking Only" on screen; MOTOR_BASELINE internally).
-    motorBaselineDurationSeconds: 10,
+    motorBaselineDurationSeconds: 120,
 
     // The three serial-subtraction conditions, in the order they run.
     subtractionValues: [3, 7, 17],
 
     // Counting-only hold screen for each condition (no mouse task) -
     // "Count Back by N" on screen; SUBTRACTION_<n> internally.
-    subtractionOnlyDurationSeconds: 10,
+    subtractionOnlyDurationSeconds: 120,
 
     // Combined counting + clicking block for each condition -
     // "Count Back by N and Clicking" on screen; DUAL_TASK_<n> internally.
-    dualTaskDurationSeconds: 10,
+    dualTaskDurationSeconds: 30,
 
     // REST break after every count-back-only block and every dual-task
     // block (RECOVERY_AFTER_DUAL_3/_7). There is no separate recovery
@@ -31,7 +31,7 @@ export const experimentConfig = {
     // block (they are joined instead by dualTaskTransitionSeconds below).
     // RECOVERY_AFTER_MOTOR (after clicking-only) uses its own dedicated
     // pair of durations instead - see the two fields directly below.
-    recoveryDurationSeconds: 10,
+    recoveryDurationSeconds: 30,
 
     // RECOVERY_AFTER_MOTOR (the REST before series 1) is split across two
     // screens: the REST explanation itself, then RECOVERY_AFTER_MOTOR_INFO -
