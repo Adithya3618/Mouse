@@ -115,6 +115,19 @@ export async function fetchAudioObjectUrl(recordingId) {
     return URL.createObjectURL(blob);
 }
 
+// Same "fetch with the Authorization header attached, hand back a Blob"
+// pattern as fetchAudioObjectUrl above - a plain <a href> download can't
+// carry that header, and the token must never ride along in the URL
+// itself (see this file's own header comment).
+export async function fetchExportBlob(path) {
+    const token = getToken();
+    const response = await doFetch(path, {}, token);
+    if (!response.ok) {
+        throw new Error(`Export failed (${response.status})`);
+    }
+    return response.blob();
+}
+
 async function doFetch(path, options, token) {
     return fetch(buildApiUrl(path), {
         ...options,

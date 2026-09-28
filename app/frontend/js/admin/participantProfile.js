@@ -29,11 +29,14 @@ async function load() {
         return;
     }
 
+    statusLine.textContent = 'Loading…';
+    statusLine.classList.remove('is-error');
     try {
         const profile = await adminFetch(`/api/admin/participants/${encodeURIComponent(participantId)}`);
         render(profile);
+        statusLine.textContent = '';
     } catch (error) {
-        statusLine.textContent = error.message;
+        statusLine.textContent = `Unable to load participant. ${error.message}`;
         statusLine.classList.add('is-error');
     }
 }
@@ -52,8 +55,8 @@ function render(profile) {
     sessionsList.textContent = '';
     if (profile.sessions.length === 0) {
         const empty = document.createElement('p');
-        empty.className = 'status-line';
-        empty.textContent = 'No sessions recorded yet.';
+        empty.className = 'empty-note';
+        empty.textContent = 'No sessions found for this participant.';
         sessionsList.appendChild(empty);
         return;
     }

@@ -1,21 +1,27 @@
-/* Admin/research dashboard - NOT participant-facing. Reuses the same
-   design tokens as the participant app (see css/intake.css's :root block)
-   so the two feel like one product, but lives entirely under
-   app/frontend/admin/ as its own self-contained page set. */
+/* Admin/research dashboard - NOT participant-facing. Deliberately its own,
+   distinct visual identity from the participant-facing app (a professional
+   research-administration tool, not a task-experiment UI) - lives entirely
+   under app/frontend/admin/ as its own self-contained page set. */
 
 :root {
-  --paper: #F6F7F5;
+  --paper: #F7F8FA;
   --panel: #FFFFFF;
-  --ink: #12181B;
-  --slate: #6B7680;
-  --line: #DEE3E1;
-  --accent: #147D6F;
-  --accent-soft: #E4F3EF;
-  --amber: #C97A22;
-  --amber-soft: #FBEEDC;
-  --off: #EDEEEC;
-  --danger: #B3261E;
-  --danger-soft: #FBE7E5;
+  --ink: #111827;
+  --slate: #6B7280;
+  --slate-soft: #9CA3AF;
+  --line: #E5E7EB;
+  --accent: #2563EB;
+  --accent-soft: #EFF4FE;
+  --accent-hover: #1D4ED8;
+  --success: #059669;
+  --success-soft: #E7F6EF;
+  --amber: #B45309;
+  --amber-soft: #FEF3E2;
+  --off: #F3F4F6;
+  --danger: #DC2626;
+  --danger-soft: #FDECEC;
+  --sidebar-width: 236px;
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
 * { box-sizing: border-box; }
@@ -27,31 +33,247 @@ body {
   color: var(--ink);
 }
 
+/* --- Top header: full width, above sidebar + content --- */
 .admin-topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  padding: 18px 28px;
+  padding: 13px 24px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
 }
 
-.admin-topbar h1 {
-  font-size: 18px;
-  margin: 0;
+.admin-topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.admin-topbar a {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
+.admin-topbar .brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: var(--accent-soft);
   color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-topbar .brand h1 {
+  font-size: 16.5px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ink);
+}
+
+.admin-topbar .brand p {
+  font-size: 12px;
+  color: var(--slate);
+  margin: 1px 0 0;
+}
+
+.admin-topbar .identity-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-topbar .identity-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--off);
+  color: var(--slate);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.admin-topbar .identity-text .name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.admin-topbar .identity-text .sub {
+  font-size: 11.5px;
+  color: var(--slate);
+  margin-top: 1px;
+}
+
+/* --- Overall layout: sidebar + main content, side by side below the header --- */
+.admin-shell {
+  display: flex;
+  min-height: calc(100vh - 57px);
+}
+
+.admin-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  padding: 18px 14px;
+}
+
+.admin-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-sidebar .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--slate);
   text-decoration: none;
 }
 
-.admin-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 24px 28px 64px;
+.admin-sidebar .nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.admin-sidebar .nav-item:hover {
+  background: var(--off);
+  color: var(--ink);
+}
+
+.admin-sidebar .nav-item.active {
+  background: var(--accent);
+  color: white;
+  box-shadow: var(--shadow-card);
+}
+
+.admin-sidebar .nav-item.active svg {
+  opacity: 1;
+}
+
+.admin-content {
+  flex: 1;
+  min-width: 0;
+  padding: 28px 32px 64px;
+}
+
+.admin-content .page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--ink);
+}
+
+.admin-content .page-subtitle {
+  font-size: 13.5px;
+  color: var(--slate);
+  margin: 0 0 22px;
+}
+
+/* --- Page header row: title/subtitle left, page-level actions right --- */
+.page-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-header-row .page-title,
+.page-header-row .page-subtitle {
+  margin-bottom: 4px;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.export-dropdown {
+  position: relative;
+}
+
+.export-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 160px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(16, 24, 40, 0.1);
+  padding: 4px;
+  z-index: 10;
+}
+
+.export-dropdown-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: 5px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.export-dropdown-menu button:hover { background: var(--off); }
+
+/* --- KPI cards (Participants page overview, computed from the same
+   filtered data the table below shows) --- */
+.kpi-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.kpi-card {
+  flex: 1 1 200px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow-card);
+}
+
+.kpi-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.kpi-icon.blue { background: var(--accent-soft); color: var(--accent); }
+.kpi-icon.green { background: var(--success-soft); color: var(--success); }
+.kpi-icon.purple { background: #F1ECFE; color: #7C3AED; }
+.kpi-icon.amber { background: var(--amber-soft); color: var(--amber); }
+
+.kpi-card .kpi-value {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.kpi-card .kpi-label {
+  font-size: 12px;
+  color: var(--slate);
 }
 
 .mono { font-family: 'IBM Plex Mono', monospace; }
@@ -59,44 +281,77 @@ body {
 .eyebrow {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
-  letter-spacing: .12em;
+  letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--slate);
   margin: 0 0 4px;
 }
 
+/* --- Filter bar: labeled groups, matching a professional form layout --- */
 .filters-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: end;
+  gap: 16px;
+  padding: 16px 18px;
   margin-bottom: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.filter-field > span {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--slate);
 }
 
 .filters-bar input[type="text"],
 .filters-bar input[type="number"],
+.filters-bar input[type="date"],
 .filters-bar select {
   font-family: 'IBM Plex Sans', sans-serif;
   font-size: 13px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 7px;
   background: var(--panel);
   color: var(--ink);
 }
 
-.filters-bar label {
+.filters-bar input:focus,
+.filters-bar select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.filters-bar .checkbox-field {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
   color: var(--slate);
+  white-space: nowrap;
+  padding-bottom: 8px;
 }
 
+.filters-bar .filters-spacer { flex: 1 1 auto; }
+
+/* --- Table --- */
 .admin-table-wrap {
   overflow-x: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--panel);
+  box-shadow: var(--shadow-card);
 }
 
 table.admin-table {
@@ -108,18 +363,41 @@ table.admin-table {
 table.admin-table th,
 table.admin-table td {
   text-align: left;
-  padding: 10px 14px;
+  padding: 11px 14px;
   border-bottom: 1px solid var(--line);
   white-space: nowrap;
 }
 
+table.admin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 table.admin-table th {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--slate);
   background: var(--off);
+  user-select: none;
+}
+
+table.admin-table th.sortable {
+  cursor: pointer;
+}
+
+table.admin-table th.sortable:hover {
+  color: var(--ink);
+}
+
+table.admin-table th .sort-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--slate-soft);
+  font-size: 11px;
+}
+
+table.admin-table th.sort-active .sort-arrow {
+  color: var(--accent);
 }
 
 table.admin-table tbody tr {
@@ -130,80 +408,203 @@ table.admin-table tbody tr:hover {
   background: var(--accent-soft);
 }
 
-.badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-family: 'IBM Plex Mono', monospace;
-  text-transform: uppercase;
+/* --- Accuracy: percentage + a small, subtle horizontal bar, colored by
+   tier (matches the same overallAccuracy value the text shows - never a
+   second, independently-computed source) --- */
+.accuracy-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 64px;
 }
 
-.badge.complete { background: var(--accent-soft); color: var(--accent); }
+.accuracy-cell .accuracy-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.accuracy-bar-track {
+  width: 64px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--off);
+  overflow: hidden;
+}
+
+.accuracy-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--slate-soft);
+}
+
+.accuracy-bar-fill.tier-high { background: var(--success); }
+.accuracy-bar-fill.tier-mid { background: var(--amber); }
+.accuracy-bar-fill.tier-low { background: var(--line); }
+
+.badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: 'IBM Plex Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.badge.complete { background: var(--success-soft); color: var(--success); }
 .badge.incomplete { background: var(--amber-soft); color: var(--amber); }
 .badge.review { background: var(--danger-soft); color: var(--danger); }
+.badge.no-sessions { background: var(--off); color: var(--slate); }
 
 .row.correct { color: var(--accent); }
 .row.incorrect { color: var(--danger); font-weight: 600; }
 .row.unresolved { color: var(--slate); font-style: italic; }
 
+/* --- Row actions --- */
+.row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+button.admin-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-weight: 500;
+  font-size: 12.5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button.admin-button svg { flex-shrink: 0; }
+
+button.admin-button:hover { background: var(--off); }
+button.admin-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button.admin-button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+button.admin-button.primary:hover { background: var(--accent-hover); }
+
+/* Genuine hard-delete action - the one destructive/irreversible button on
+   this dashboard, so it reads clearly different from every other button. */
+button.admin-button.danger {
+  border-color: var(--danger);
+  background: var(--panel);
+  color: var(--danger);
+}
+
+button.admin-button.danger:hover {
+  background: var(--danger);
+  color: white;
+}
+
+/* --- Pagination --- */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  font-size: 12.5px;
+  color: var(--slate);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pagination-controls button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 999px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.pagination-controls button:hover:not(:disabled) { background: var(--off); }
+.pagination-controls button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.pagination-controls button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+/* --- Stat cards (participant/session review) --- */
 .stat-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 24px;
 }
 
 .stat-card {
   flex: 1 1 140px;
-  padding: 14px 16px;
+  padding: 13px 16px;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--accent);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--panel);
 }
 
 .stat-card .value {
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 600;
+  color: var(--ink);
 }
 
 .stat-card .label {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px;
-  letter-spacing: .08em;
+  letter-spacing: .06em;
   text-transform: uppercase;
   color: var(--slate);
+  margin-top: 2px;
 }
 
 .session-card {
-  padding: 14px 18px;
+  padding: 13px 18px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--panel);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   cursor: pointer;
 }
 
-.session-card:hover { background: var(--accent-soft); }
+.session-card:hover { border-color: var(--accent); background: var(--accent-soft); }
 
-.session-card h3 { margin: 0 0 4px; font-size: 15px; }
+.session-card h3 { margin: 0 0 4px; font-size: 14.5px; font-weight: 600; }
 
 .phase-block {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--panel);
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   overflow: hidden;
 }
 
 .phase-block-header {
-  padding: 14px 18px;
+  padding: 13px 18px;
   background: var(--off);
   border-bottom: 1px solid var(--line);
 }
 
-.phase-block-header h3 { margin: 0 0 4px; font-size: 15px; }
+.phase-block-header h3 { margin: 0 0 4px; font-size: 14.5px; font-weight: 600; }
 
 .phase-block-body { padding: 18px; }
 
@@ -212,56 +613,74 @@ table.admin-table tbody tr:hover {
   font-size: 13px;
   background: var(--off);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 5px;
   padding: 12px 14px;
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0 0 12px;
 }
 
+.empty-note {
+  font-size: 13px;
+  color: var(--slate-soft);
+  font-style: italic;
+  margin: 0 0 12px;
+}
+
 .error-box {
   color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: 5px;
+  padding: 8px 12px;
   font-size: 13px;
   margin: 0 0 12px;
 }
 
-button.admin-button {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
-  padding: 8px 14px;
-  border-radius: 4px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: white;
-  cursor: pointer;
-}
-
-button.admin-button:hover { opacity: 0.9; }
-button.admin-button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* Genuine hard-delete action (js/admin/participantsList.js) - the one
-   destructive/irreversible button on this dashboard, so it reads clearly
-   different from the (safe, non-destructive) default accent button. */
-button.admin-button.danger {
-  border-color: var(--danger);
-  background: var(--danger);
-}
-
 .status-line {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--slate);
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .status-line.is-error { color: var(--danger); }
+.status-line.is-loading { color: var(--slate); }
 
 a.back-link {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--accent);
   text-decoration: none;
-  display: inline-block;
-  margin-bottom: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 14px;
 }
 
+a.back-link:hover { text-decoration: underline; }
+
 audio { width: 100%; margin-bottom: 6px; }
+
+/* --- Responsive: sidebar collapses to a horizontal strip on small screens,
+   tables scroll horizontally instead of breaking the layout --- */
+@media (max-width: 760px) {
+  .admin-shell {
+    flex-direction: column;
+  }
+  .admin-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 12px;
+  }
+  .admin-sidebar nav {
+    flex-direction: row;
+  }
+  .admin-content {
+    padding: 20px 16px 48px;
+  }
+  .filters-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

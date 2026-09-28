@@ -353,3 +353,219 @@ test('POST /api/admin/participants/:id/hard-delete on a participant with no sess
         await close();
     }
 });
+
+test('GET /api/admin/participants paginates: pageSize limits the returned page, total/totalPages describe the full filtered set', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        for (let i = 0; i < 5; i += 1) {
+            await seedSession(context, { participantCode: `PAGE${i}`, sessionId: `session-page-${i}`, transcriptText: '944 941 938' });
+        }
+
+        const page1 = await fetch(`${baseUrl}/api/admin/participants?pageSize=2&page=1`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(page1.participants.length, 2);
+        assert.equal(page1.total, 5);
+        assert.equal(page1.totalPages, 3);
+        assert.equal(page1.page, 1);
+
+        const page3 = await fetch(`${baseUrl}/api/admin/participants?pageSize=2&page=3`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(page3.participants.length, 1, 'the last page only has the remainder');
+
+        // Every participant across all pages is unique and accounted for.
+        const allCodes = new Set();
+        for (let p = 1; p <= 3; p += 1) {
+            const page = await fetch(`${baseUrl}/api/admin/participants?pageSize=2&page=${p}`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+            page.participants.forEach((participant) => allCodes.add(participant.participantCode));
+        }
+        assert.equal(allCodes.size, 5);
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants with no page/pageSize still returns every participant (existing callers are unaffected) up to a generous default page size', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await seedSession(context, { participantCode: 'NOPAGE1', sessionId: 'session-nopage-1', transcriptText: '944 941 938' });
+        await seedSession(context, { participantCode: 'NOPAGE2', sessionId: 'session-nopage-2', transcriptText: '944 941 938' });
+
+        const result = await fetch(`${baseUrl}/api/admin/participants`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(result.participants.length, 2);
+        assert.equal(result.total, 2);
+        assert.equal(result.totalPages, 1);
+    } finally {
+        await close();
+    }
+});
+
+test('a page number beyond the last page clamps to the last page rather than returning an empty/invalid result', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await seedSession(context, { participantCode: 'CLAMP1', sessionId: 'session-clamp-1', transcriptText: '944 941 938' });
+
+        const result = await fetch(`${baseUrl}/api/admin/participants?pageSize=1&page=99`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(result.page, 1);
+        assert.equal(result.participants.length, 1);
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants?sort=date sorts by the same latestSessionAt field the dashboard displays', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await seedSession(context, { participantCode: 'SORT_DATE_OLDER', sessionId: 'session-date-1', transcriptText: '944 941 938' });
+        // Force distinct, known-ordered timestamps directly on the session
+        // rows (seedSession() doesn't accept an explicit start_time).
+        const db = context.db;
+        await db.prepare('UPDATE sessions SET start_time = ? WHERE id = ?').run('2020-01-01T00:00:00.000Z', 'session-date-1');
+        await seedSession(context, { participantCode: 'SORT_DATE_NEWER', sessionId: 'session-date-2', transcriptText: '944 941 938' });
+        await db.prepare('UPDATE sessions SET start_time = ? WHERE id = ?').run('2025-01-01T00:00:00.000Z', 'session-date-2');
+
+        const ascending = await fetch(`${baseUrl}/api/admin/participants?sort=date&sortDir=asc`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        const codes = ascending.participants.map((p) => p.participantCode);
+        assert.ok(codes.indexOf('SORT_DATE_OLDER') < codes.indexOf('SORT_DATE_NEWER'));
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants?sort=status sorts by completionStatus', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await context.participantRepository.upsertByCode('NO_SESSIONS_YET');
+        await seedSession(context, { participantCode: 'HAS_SESSION', sessionId: 'session-status-1', transcriptText: '944 941 938' });
+
+        const result = await fetch(`${baseUrl}/api/admin/participants?sort=status`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(result.participants.length, 2);
+        assert.ok(result.participants.every((p) => typeof p.completionStatus === 'string'));
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants?fromDate=&toDate= filters by the same latestSessionAt field the dashboard displays', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await seedSession(context, { participantCode: 'RANGE_OLDER', sessionId: 'session-range-1', transcriptText: '944 941 938' });
+        const db = context.db;
+        await db.prepare('UPDATE sessions SET start_time = ? WHERE id = ?').run('2020-01-01T00:00:00.000Z', 'session-range-1');
+        await seedSession(context, { participantCode: 'RANGE_NEWER', sessionId: 'session-range-2', transcriptText: '944 941 938' });
+        await db.prepare('UPDATE sessions SET start_time = ? WHERE id = ?').run('2025-06-15T00:00:00.000Z', 'session-range-2');
+        await context.participantRepository.upsertByCode('RANGE_NO_SESSIONS');
+
+        const inRange = await fetch(`${baseUrl}/api/admin/participants?fromDate=2025-01-01&toDate=2025-12-31`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        const codes = inRange.participants.map((p) => p.participantCode);
+        assert.ok(codes.includes('RANGE_NEWER'));
+        assert.ok(!codes.includes('RANGE_OLDER'), 'older session falls outside fromDate');
+        assert.ok(!codes.includes('RANGE_NO_SESSIONS'), 'a participant with no sessions never matches a date range');
+
+        const fromOnly = await fetch(`${baseUrl}/api/admin/participants?fromDate=2024-01-01`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.ok(fromOnly.participants.map((p) => p.participantCode).includes('RANGE_NEWER'));
+        assert.ok(!fromOnly.participants.map((p) => p.participantCode).includes('RANGE_OLDER'));
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants includes stats computed over the currently-filtered set, not the whole dataset', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await seedSession(context, { participantCode: 'STATS_A', sessionId: 'session-stats-1', transcriptText: '944 941 938' });
+        await seedSession(context, { participantCode: 'STATS_B', sessionId: 'session-stats-2', transcriptText: '944 941 938' });
+
+        const all = await fetch(`${baseUrl}/api/admin/participants`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(all.stats.totalParticipants, 2);
+        assert.equal(all.stats.totalSessions, 2);
+        assert.equal(typeof all.stats.averageAccuracy, 'number');
+        assert.equal(typeof all.stats.pendingReview, 'number');
+
+        const filtered = await fetch(`${baseUrl}/api/admin/participants?search=STATS_A`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(filtered.stats.totalParticipants, 1, 'stats reflect the search filter, not the whole dataset');
+    } finally {
+        await close();
+    }
+});
+
+test('POST /api/admin/participants creates a new participant with just a code, rejects a duplicate, rejects an empty code', async () => {
+    const { close, baseUrl, token } = await startAdminServer();
+    try {
+        const created = await fetch(`${baseUrl}/api/admin/participants`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participantCode: 'NEW_ADMIN_ADDED' })
+        });
+        assert.equal(created.status, 201);
+        const createdBody = await created.json();
+        assert.equal(createdBody.participantCode, 'NEW_ADMIN_ADDED');
+        assert.ok(createdBody.participantId);
+
+        const listed = await fetch(`${baseUrl}/api/admin/participants?search=NEW_ADMIN_ADDED`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(listed.participants.length, 1);
+        assert.equal(listed.participants[0].sessionCount, 0, 'admin-added participant has no sessions yet, never a fabricated one');
+
+        const duplicate = await fetch(`${baseUrl}/api/admin/participants`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participantCode: 'NEW_ADMIN_ADDED' })
+        });
+        assert.equal(duplicate.status, 409);
+
+        const empty = await fetch(`${baseUrl}/api/admin/participants`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participantCode: '  ' })
+        });
+        assert.equal(empty.status, 400);
+    } finally {
+        await close();
+    }
+});
+
+test('POST /api/admin/participants on a participant code that was previously soft-deleted restores it rather than creating a second row', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        const { participant } = await seedSession(context, { participantCode: 'REVIVED', sessionId: 'session-revived-1', transcriptText: '944 941 938' });
+        await fetch(`${baseUrl}/api/admin/participants/${participant.id}/delete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirm: 'REVIVED' })
+        });
+
+        const recreated = await fetch(`${baseUrl}/api/admin/participants`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ participantCode: 'REVIVED' })
+        });
+        assert.equal(recreated.status, 201);
+        const recreatedBody = await recreated.json();
+        assert.equal(recreatedBody.participantId, participant.id, 'restores the same row rather than creating a duplicate');
+
+        const listed = await fetch(`${baseUrl}/api/admin/participants?search=REVIVED`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
+        assert.equal(listed.participants.length, 1, 'the restored participant is visible again, and only once');
+        assert.equal(listed.participants[0].sessionCount, 1, 'its original session is still attached, not lost');
+    } finally {
+        await close();
+    }
+});
+
+test('GET /api/admin/participants/export returns a CSV of exactly the filtered rows, matching the JSON list endpoint', async () => {
+    const { context, close, baseUrl, token } = await startAdminServer();
+    try {
+        await seedSession(context, { participantCode: 'EXPORT_ME', sessionId: 'session-export-1', transcriptText: '944 941 938' });
+        await seedSession(context, { participantCode: 'EXCLUDE_ME', sessionId: 'session-export-2', transcriptText: '944 941 938' });
+
+        const response = await fetch(`${baseUrl}/api/admin/participants/export?search=EXPORT_ME`, { headers: { Authorization: `Bearer ${token}` } });
+        assert.equal(response.status, 200);
+        assert.ok((response.headers.get('content-type') || '').includes('text/csv'));
+        assert.ok((response.headers.get('content-disposition') || '').includes('attachment'));
+
+        const csv = await response.text();
+        const lines = csv.trim().split('\r\n');
+        assert.equal(lines[0], 'Participant ID,Sessions,Accuracy (%),Total Responses,Incorrect,Latest Session (UTC),Status,Needs Review');
+        assert.equal(lines.length, 2, 'header plus exactly the one filtered-in row');
+        assert.ok(lines[1].startsWith('EXPORT_ME,'));
+        assert.ok(!csv.includes('EXCLUDE_ME'));
+    } finally {
+        await close();
+    }
+});

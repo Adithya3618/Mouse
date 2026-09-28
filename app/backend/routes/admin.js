@@ -20,26 +20,152 @@ const SORT_ALIASES = {
     sessions: 'sessionCount',
     errors: 'incorrectResponses',
     responses: 'totalResponses',
-    participant: 'participantCode'
+    participant: 'participantCode',
+    date: 'latestSessionAt',
+    time: 'latestSessionAt',
+    status: 'completionStatus'
 };
+
+// Server-side pagination for /participants - listParticipants() already
+// does the real work (filter/sort over every participant); this just
+// slices the result before it goes over the wire, so "do not load
+// thousands of records into the browser" holds even though the query
+// itself still has to look at every participant to filter/sort correctly
+// (the same tradeoff adminQueryService.js's own header comment already
+// makes, at this application's research-study scale). Defaults to a page
+// size large enough that no existing caller needs to pass page/pageSize at
+// all to see every participant in a normal-sized study.
+const DEFAULT_PAGE_SIZE = 20;
+
+// Shared between GET /participants and GET /participants/export so both
+// read the exact same filters out of the query string - the export can
+// never drift from what the currently-filtered table is showing.
+function parseParticipantFilters(query) {
+    const { search, status, needsReview, minAccuracy, fromDate, toDate, sort, sortDir } = query;
+    return {
+        search,
+        status,
+        needsReview: needsReview === 'true',
+        minAccuracy: minAccuracy !== undefined ? Number(minAccuracy) : undefined,
+        fromDate,
+        toDate,
+        sort: SORT_ALIASES[sort] || sort || 'participantCode',
+        sortDir
+    };
+}
+
+// KPI cards on the Participants page - plain aggregates over exactly the
+// (already-filtered) summaries the table itself renders, nothing recomputed
+// from a separate source. "Average accuracy" only counts participants who
+// have at least one session, same as a single participant's own
+// overallAccuracy already excludes phases with no scored responses.
+function computeStats(summaries) {
+    const withSessions = summaries.filter((p) => p.sessionCount > 0);
+    const averageAccuracy = withSessions.length > 0
+        ? Number((withSessions.reduce((sum, p) => sum + p.overallAccuracy, 0) / withSessions.length).toFixed(1))
+        : 0;
+    return {
+        totalParticipants: summaries.length,
+        totalSessions: summaries.reduce((sum, p) => sum + p.sessionCount, 0),
+        averageAccuracy,
+        pendingReview: summaries.filter((p) => p.needsReview).length
+    };
+}
+
+function csvField(value) {
+    const text = value === null || value === undefined ? '' : String(value);
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toParticipantsCsv(participants) {
+    const header = ['Participant ID', 'Sessions', 'Accuracy (%)', 'Total Responses', 'Incorrect', 'Latest Session (UTC)', 'Status', 'Needs Review'];
+    const rows = participants.map((p) => [
+        p.participantCode,
+        p.sessionCount,
+        p.overallAccuracy,
+        p.totalResponses,
+        p.incorrectResponses,
+        p.latestSessionAt || '',
+        p.completionStatus,
+        p.needsReview ? 'Yes' : 'No'
+    ]);
+    return [header, ...rows].map((row) => row.map(csvField).join(',')).join('\r\n') + '\r\n';
+}
 
 function createAdminRouter({ adminQueryService, recordingRepository, phaseRepository, audioStorage, speechProcessingService, participantRepository, auditLogRepository, participantDeletionRepository }) {
     const router = express.Router();
 
     router.get('/participants', async (req, res) => {
         try {
-            const { search, status, needsReview, minAccuracy, sort, sortDir } = req.query;
-            const participants = await adminQueryService.listParticipants({
-                search,
-                status,
-                needsReview: needsReview === 'true',
-                minAccuracy: minAccuracy !== undefined ? Number(minAccuracy) : undefined,
-                sort: SORT_ALIASES[sort] || sort || 'participantCode',
-                sortDir
-            });
-            res.json({ participants });
+            const allParticipants = await adminQueryService.listParticipants(parseParticipantFilters(req.query));
+
+            const total = allParticipants.length;
+            const resolvedPageSize = Math.max(1, Number(req.query.pageSize) || DEFAULT_PAGE_SIZE);
+            const totalPages = Math.max(1, Math.ceil(total / resolvedPageSize));
+            const resolvedPage = Math.min(Math.max(1, Number(req.query.page) || 1), totalPages);
+            const start = (resolvedPage - 1) * resolvedPageSize;
+            const participants = allParticipants.slice(start, start + resolvedPageSize);
+
+            res.json({ participants, total, page: resolvedPage, pageSize: resolvedPageSize, totalPages, stats: computeStats(allParticipants) });
         } catch (error) {
             res.status(500).json({ error: `Failed to list participants: ${error.message}` });
+        }
+    });
+
+    // Adds a participant record the same way the intake screen's first
+    // session for a code does (see repositories/participantRepository.js#
+    // upsertByCode) - the only field a participant row ever has beyond its
+    // id/timestamps is the participant code itself (no name, no other
+    // intake fields are collected or stored), so that's the only thing this
+    // route accepts. Rejects a code that already exists rather than
+    // silently reusing it, since "Add Participant" from an admin is a
+    // deliberate create, not the intake flow's idempotent upsert-on-session.
+    router.post('/participants', async (req, res) => {
+        try {
+            const participantCode = String((req.body || {}).participantCode || '').trim();
+            if (!participantCode) {
+                res.status(400).json({ error: 'participantCode is required.' });
+                return;
+            }
+            const existing = await participantRepository.getByCode(participantCode);
+            if (existing && !existing.deleted_at) {
+                res.status(409).json({ error: `Participant ${participantCode} already exists.` });
+                return;
+            }
+            // A soft-deleted participant with this exact code already has a
+            // row (see participantRepository.js#getByCode, which doesn't
+            // filter deleted_at) - restore it rather than upsert, which
+            // would otherwise hand back that same still-deleted row.
+            const participant = existing
+                ? await participantRepository.restore(existing.id)
+                : await participantRepository.upsertByCode(participantCode);
+            await auditLogRepository.insert({
+                action: 'participant_create',
+                targetType: 'participant',
+                targetId: participant.id,
+                details: { participantCode: participant.participant_code, restoredFromSoftDelete: Boolean(existing) }
+            });
+            res.status(201).json({ participantId: participant.id, participantCode: participant.participant_code });
+        } catch (error) {
+            res.status(500).json({ error: `Failed to create participant: ${error.message}` });
+        }
+    });
+
+    // CSV export of exactly the rows the Participants table can show -
+    // same adminQueryService.listParticipants() call as the list route
+    // above, same filters, just unpaginated and serialized as CSV instead
+    // of JSON. No external export/reporting service involved: the file is
+    // built in memory from already-queried research data and streamed
+    // straight back in the response.
+    router.get('/participants/export', async (req, res) => {
+        try {
+            const participants = await adminQueryService.listParticipants(parseParticipantFilters(req.query));
+            const csv = toParticipantsCsv(participants);
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="participants-export.csv"');
+            res.send(csv);
+        } catch (error) {
+            res.status(500).json({ error: `Failed to export participants: ${error.message}` });
         }
     });
 

@@ -28,11 +28,12 @@ async function load() {
         setStatus('No session id in the URL.', true);
         return;
     }
+    setStatus('Loading…', false);
     try {
         const detail = await adminFetch(`/api/admin/sessions/${encodeURIComponent(sessionId)}`);
         render(detail);
     } catch (error) {
-        setStatus(error.message, true);
+        setStatus(`Unable to load session. ${error.message}`, true);
     }
 }
 
@@ -95,12 +96,11 @@ function renderPhaseBlock(phase) {
         body.appendChild(err);
     }
 
+    const audioLabel = document.createElement('p');
+    audioLabel.className = 'eyebrow';
+    audioLabel.textContent = 'Recording';
+    body.appendChild(audioLabel);
     if (phase.recording) {
-        const audioLabel = document.createElement('p');
-        audioLabel.className = 'eyebrow';
-        audioLabel.textContent = '🎧 Original Session Recording';
-        body.appendChild(audioLabel);
-
         const audioEl = document.createElement('audio');
         audioEl.controls = true;
         body.appendChild(audioEl);
@@ -109,21 +109,30 @@ function renderPhaseBlock(phase) {
             .catch((error) => {
                 const err = document.createElement('p');
                 err.className = 'error-box';
-                err.textContent = `Could not load audio: ${error.message}`;
+                err.textContent = `Unable to load recording. ${error.message}`;
                 body.appendChild(err);
             });
+    } else {
+        const empty = document.createElement('p');
+        empty.className = 'empty-note';
+        empty.textContent = 'No recording available.';
+        body.appendChild(empty);
     }
 
+    const transcriptLabel = document.createElement('p');
+    transcriptLabel.className = 'eyebrow';
+    transcriptLabel.textContent = 'Transcript (exactly as returned by the transcription service)';
+    body.appendChild(transcriptLabel);
     if (phase.rawTranscript != null) {
-        const transcriptLabel = document.createElement('p');
-        transcriptLabel.className = 'eyebrow';
-        transcriptLabel.textContent = 'Raw transcript (exactly as returned by the transcription service)';
-        body.appendChild(transcriptLabel);
-
         const transcriptBox = document.createElement('p');
         transcriptBox.className = 'transcript-box';
         transcriptBox.textContent = phase.rawTranscript;
         body.appendChild(transcriptBox);
+    } else {
+        const empty = document.createElement('p');
+        empty.className = 'empty-note';
+        empty.textContent = 'No transcription available.';
+        body.appendChild(empty);
     }
 
     if (phase.responses.length > 0) {

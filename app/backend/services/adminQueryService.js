@@ -34,7 +34,7 @@ class AdminQueryService {
         this._responses = responseRepository;
     }
 
-    async listParticipants({ search, status, needsReview, minAccuracy, sort = 'participantCode', sortDir = 'asc' } = {}) {
+    async listParticipants({ search, status, needsReview, minAccuracy, fromDate, toDate, sort = 'participantCode', sortDir = 'asc' } = {}) {
         const participants = await this._participants.list();
         let summaries = await Promise.all(participants.map((p) => this._buildParticipantSummary(p)));
 
@@ -51,6 +51,17 @@ class AdminQueryService {
         if (minAccuracy != null && minAccuracy !== '') {
             const threshold = Number(minAccuracy);
             summaries = summaries.filter((p) => p.overallAccuracy >= threshold);
+        }
+        // Compares against the same stored latestSessionAt the Date/Time
+        // columns render (see _buildParticipantSummary below) - a
+        // participant with no sessions (latestSessionAt === null) never
+        // matches either bound, same as it already renders as "-" rather
+        // than a fabricated date.
+        if (fromDate) {
+            summaries = summaries.filter((p) => p.latestSessionAt && p.latestSessionAt.slice(0, 10) >= fromDate);
+        }
+        if (toDate) {
+            summaries = summaries.filter((p) => p.latestSessionAt && p.latestSessionAt.slice(0, 10) <= toDate);
         }
 
         const dir = sortDir === 'desc' ? -1 : 1;
