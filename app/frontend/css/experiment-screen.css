@@ -331,13 +331,16 @@ body.experiment-active {
   text-align: left;
 }
 
-/* The RECOVERY_AFTER_MOTOR "Play Instructions" player (see
-   js/ui/experimentScreen.js's RECOVERY_AUDIO_FILE_BY_PHASE_ID) - same
-   centered-block treatment as .task-paragraphs above, so it lines up under
-   the centered title/paragraphs instead of hugging the left edge of this
-   already-centered .task-panel. */
+/* The "Play Instructions" player for RECOVERY_AFTER_MOTOR/DUAL_3/DUAL_7 and
+   now RECOVERY_AFTER_MOTOR_INFO too (see js/ui/experimentScreen.js's
+   RECOVERY_AUDIO_FILE_BY_PHASE_ID) - same centered-block treatment as
+   .task-paragraphs above, so it lines up under the centered title/
+   paragraphs instead of hugging the left edge of this already-centered
+   .task-panel. */
 #screen-experiment[data-phase-type="recovery"] #recoveryAudioWrap,
-#screen-experiment[data-phase-type="recovery"] #recoveryAudioFallback {
+#screen-experiment[data-phase-type="recovery"] #recoveryAudioFallback,
+#screen-experiment[data-phase-type="recovery-info"] #recoveryAudioWrap,
+#screen-experiment[data-phase-type="recovery-info"] #recoveryAudioFallback {
   margin-left: auto;
   margin-right: auto;
 }

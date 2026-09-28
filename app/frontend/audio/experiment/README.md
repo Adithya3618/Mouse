@@ -44,5 +44,26 @@ Current expected filenames:
      you will then be given a new random number to count backward from
      while clicking the targets as soon as they appear."
 
+- `rest-counting-clicking.mp3` - narrates RECOVERY_AFTER_MOTOR_INFO's
+  paragraphs (the second, timed screen shown right after the first REST,
+  before series 1 - the count-back-only -> dual-task transition procedure).
+  Must read this exact text aloud, in order:
+  1. "After the counting-only portion, you will immediately begin the
+     counting and clicking portion without a rest period. You will be given
+     a new random number to count backward from."
+  2. "A five-second countdown will prepare you for the clicking task.
+     Continue counting backward during the countdown. When the countdown
+     ends, dots will begin randomly appearing and disappearing on the
+     screen."
+  3. "When the dots appear, continue counting backward and begin clicking
+     them as quickly and accurately as possible. Continue both tasks at the
+     same time until the timer runs out."
+  4. "This same procedure will be used for counting backward by three, by
+     seven, and by seventeen. For each series, you will first count
+     backward without clicking, then receive a new random number for the
+     counting-and-clicking portion."
+  5. "Remember to speak clearly and at an audible volume throughout the
+     task so that the recording can capture each number you say."
+
 If any of these files is missing, the player is replaced with a plain
 "Audio not yet available" note - the screen never shows a broken control.

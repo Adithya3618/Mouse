@@ -12,14 +12,14 @@
 export const experimentConfig = {
     // Clicking-only mouse baseline at the start of the experiment
     // ("Clicking Only" on screen; MOTOR_BASELINE internally).
-    motorBaselineDurationSeconds: 120,
+    motorBaselineDurationSeconds: 10,
 
     // The three serial-subtraction conditions, in the order they run.
     subtractionValues: [3, 7, 17],
 
     // Counting-only hold screen for each condition (no mouse task) -
     // "Count Back by N" on screen; SUBTRACTION_<n> internally.
-    subtractionOnlyDurationSeconds: 120,
+    subtractionOnlyDurationSeconds: 10,
 
     // Combined counting + clicking block for each condition -
     // "Count Back by N and Clicking" on screen; DUAL_TASK_<n> internally.

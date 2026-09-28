@@ -184,18 +184,25 @@ function getRecoveryDisplay(phase) {
 // the count-back-only -> dual-task transition procedure, on its own page.
 function getRecoveryInfoDisplay() {
     return {
-        title: 'REST',
-        instruction: '',
-        paragraphs: [
-            'After the counting-only portion, you will immediately begin the counting and clicking portion without a rest period. You will be given a new random number to count backward from for the counting-and-clicking portion.',
-            'A 5-second countdown will begin to make sure you are ready for the clicking task. Continue counting backward during this countdown. When the countdown ends, dots will begin randomly appearing and disappearing on the screen.',
-            'As soon as you see the dots, continue counting backward and begin clicking them as quickly and accurately as possible. Continue performing both tasks at the same time—counting backward and clicking the dots—until the timer runs out. Complete as many count-backs and click as many dots as possible within the allotted time.',
-            'You will follow this same procedure for counting backward by 3, by 7, and by 17. For each series, you will first count backward without clicking, then be given a new random number to count backward from while clicking.',
-            'Remember to speak clearly and at an audible volume throughout each task so that the recording can capture each number you say.'
-        ],
-        showTimer: true,
-        showStartingNumber: false,
-        showPrepCountdown: false,
-        startingNumber: null
-    };
+       title: 'REST',
+
+instruction: '',
+
+paragraphs: [
+    'After the counting-only portion, you will immediately begin the counting and clicking portion without a rest period. You will be given a new random number to count backward from.',
+
+    'A 5-second countdown will prepare you for the clicking task. Continue counting backward during the countdown. When the countdown ends, dots will begin randomly appearing and disappearing on the screen.',
+
+    'When the dots appear, continue counting backward and begin clicking them as quickly and accurately as possible. Continue both tasks at the same time until the timer runs out.',
+
+    'This same procedure will be used for counting backward by 3, by 7, and by 17. For each series, you will first count backward without clicking, then receive a new random number for the counting-and-clicking portion.',
+
+    'Remember to speak clearly and at an audible volume throughout the task so that the recording can capture each number you say.'
+],
+
+showTimer: true,
+showStartingNumber: false,
+showPrepCountdown: false,
+startingNumber: null
+};
 }

@@ -23,10 +23,18 @@ const PREPARATION_PHASE_TYPE = 'preparation';
 const COMPLETE_PHASE_ID = 'COMPLETE';
 const INSTRUCTIONS_PHASE_ID = 'INSTRUCTIONS';
 
-// All 3 REST screens now have narration mapped. Any phase not listed here
-// gets no audio player at all (see hideAudioPlayer('recovery') below).
+// All 3 REST screens (phaseType 'recovery') plus RECOVERY_AFTER_MOTOR_INFO
+// (phaseType 'recovery-info', the count-back-only -> dual-task transition
+// procedure shown right after the first REST) now have narration mapped.
+// Any phase not listed here gets no audio player at all (see
+// hideAudioPlayer('recovery') below). Keyed by phase.phaseId, same as
+// before - the code path that reads this map (see the onPhaseChange
+// subscription below) already runs for every phase change regardless of
+// phaseType, so RECOVERY_AFTER_MOTOR_INFO needed no new code of its own,
+// just this one additional entry.
 const RECOVERY_AUDIO_FILE_BY_PHASE_ID = {
     RECOVERY_AFTER_MOTOR: '/audio/experiment/recovery-after-motor.mp3',
+    RECOVERY_AFTER_MOTOR_INFO: '/audio/experiment/rest-counting-clicking.mp3',
     RECOVERY_AFTER_DUAL_3: '/audio/experiment/recovery-after-dual-3.mp3',
     RECOVERY_AFTER_DUAL_7: '/audio/experiment/recovery-after-dual-7.mp3'
 };

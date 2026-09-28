@@ -23,7 +23,11 @@
 // placeholder (not sourced from any document) - replace it with the real
 // wording once available; REST has no separate intro sentence for the same
 // reason. The dual-task steps' "and clicking" bullets reuse the exact same
-// clicking bullets as step 1.
+// clicking bullets as step 1. The count-only steps (3/6/9 - "Count back
+// by N") have bullets:null and no illustration - their intro sentence
+// already says everything the old bullets said too, just split across two
+// near-duplicate lines, so the bulleted box is hidden for these steps
+// entirely rather than repeating the intro (see renderWalkthrough below).
 
 import { show, hide } from './transition.js';
 import { getExperimentController } from '../experiment/experimentRuntime.js';
@@ -39,13 +43,6 @@ const CLICKING_BULLETS = [
 ];
 
 const REST_BULLET = ['Rest for the full duration before continuing to the next task.'];
-
-function countBackBullets(value) {
-    return [
-        `Count backward by multiples of ${value}, as many times as possible.`,
-        'Continue until the timer reaches zero.'
-    ];
-}
 
 function countBackAndClickingBullets(value) {
     return [
@@ -67,13 +64,13 @@ function countBackAndClickingIntro(value) {
 const STEPS = [
     { title: 'Clicking only', duration: '80 seconds', intro: CLICKING_INTRO, bullets: CLICKING_BULLETS, illustration: true, audioFile: 'clicking-only.mp3' },
     { title: 'REST', duration: '90 seconds', intro: null, bullets: REST_BULLET, illustration: false, audioFile: 'rest.mp3' },
-    { title: 'Count back by 3', duration: '90 seconds', intro: countBackIntro(3), bullets: countBackBullets(3), illustration: false, audioFile: 'count-back-3.mp3' },
+    { title: 'Count back by 3', duration: '90 seconds', intro: countBackIntro(3), bullets: null, illustration: false, audioFile: 'count-back-3.mp3' },
     { title: 'Count back by 3 and clicking', duration: '2 minutes', intro: countBackAndClickingIntro(3), bullets: countBackAndClickingBullets(3), illustration: true, audioFile: 'count-back-3-clicking.mp3' },
     { title: 'REST', duration: '90 seconds', intro: null, bullets: REST_BULLET, illustration: false, audioFile: 'rest.mp3' },
-    { title: 'Count back by 7', duration: '90 seconds', intro: countBackIntro(7), bullets: countBackBullets(7), illustration: false, audioFile: 'count-back-7.mp3' },
+    { title: 'Count back by 7', duration: '90 seconds', intro: countBackIntro(7), bullets: null, illustration: false, audioFile: 'count-back-7.mp3' },
     { title: 'Count back by 7 and clicking', duration: '2 minutes', intro: countBackAndClickingIntro(7), bullets: countBackAndClickingBullets(7), illustration: true, audioFile: 'count-back-7-clicking.mp3' },
     { title: 'REST', duration: '90 seconds', intro: null, bullets: REST_BULLET, illustration: false, audioFile: 'rest.mp3' },
-    { title: 'Count back by 17', duration: '90 seconds', intro: countBackIntro(17), bullets: countBackBullets(17), illustration: false, audioFile: 'count-back-17.mp3' },
+    { title: 'Count back by 17', duration: '90 seconds', intro: countBackIntro(17), bullets: null, illustration: false, audioFile: 'count-back-17.mp3' },
     { title: 'Count back by 17 and clicking', duration: '2 minutes', intro: countBackAndClickingIntro(17), bullets: countBackAndClickingBullets(17), illustration: true, audioFile: 'count-back-17-clicking.mp3' }
 ];
 
@@ -98,13 +95,20 @@ function renderWalkthrough() {
 
     const bulletsList = document.getElementById('instructionsBullets');
     bulletsList.innerHTML = '';
-    for (const bullet of step.bullets) {
+    for (const bullet of step.bullets || []) {
         const li = document.createElement('li');
         li.textContent = bullet;
         bulletsList.appendChild(li);
     }
 
     document.getElementById('instructionsIllustration').hidden = !step.illustration;
+
+    // A step with neither bullets nor an illustration (the count-only
+    // steps - see STEPS above, bullets:null there since the intro
+    // paragraph already says the same thing on its own) has nothing left
+    // to put in this bordered box - hide the box itself rather than
+    // leaving an empty rectangle under the intro.
+    document.getElementById('instructionsDetailBox').hidden = !step.bullets && !step.illustration;
 
     // Disabled (not hidden/removed) on step 1 - see index.html's own
     // comment on #instructionsBackBtn for why.
