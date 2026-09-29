@@ -74,20 +74,16 @@ export async function renderResults(session, controller) {
     }
 }
 
-// session.participantCode is the exact value the participant entered at
-// intake (js/data/sessionData.js#createSession) - the same "Participant ID"
-// terminology the admin dashboard uses, never a name (none is collected).
-// Falls back to a participant-ID-free heading (per spec) if it's ever
-// missing rather than showing a literal "null"/"undefined".
+// Deliberately never shows the participant code here (researcher-requested
+// removal) - session is still accepted/unused so this stays a drop-in
+// replacement for its one call site in renderResults() below.
 function renderCompleteHeading(session) {
     const heading = document.getElementById('completeHeading');
     const subtitle = document.getElementById('completeSubtitle');
     if (!heading || !subtitle) {
         return;
     }
-    heading.textContent = session && session.participantCode
-        ? `Thank You, Participant ${session.participantCode}`
-        : 'Thank You for Participating';
+    heading.textContent = 'Thank you for participating';
     subtitle.textContent = 'Thank you for participating in the study. Your session is complete.';
 }
 
