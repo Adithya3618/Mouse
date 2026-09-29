@@ -1,5 +1,5 @@
-// Pure step-sequencing state for the session-intake wizard (1 Overview ->
-// 2 Protocol -> 3 Details). Deliberately has no DOM in it at all - see
+// Pure step-sequencing state for the session-intake wizard (1 Title ->
+// 2 Details -> 3 Protocol). Deliberately has no DOM in it at all - see
 // ui/intakeScreen.js, the only thing that touches the actual screen
 // elements. Mirrors experiment/phaseStateMachine.js's own separation of
 // "what step are we on" from "how is that rendered."

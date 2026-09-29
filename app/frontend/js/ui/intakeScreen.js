@@ -1,12 +1,16 @@
 // Behavior for the session-intake (starting) screen: the 3-step wizard
-// (1 Overview -> 2 Protocol -> 3 Details), today's date default, enabling
-// the Begin button once a code + date are entered, and the running clock
-// in the top bar.
+// (1 Title -> 2 Details -> 3 Protocol), today's date default, and enabling
+// step 2's own "Begin session" button once a code + date are entered - that
+// gate lives on #step2NextBtn (not #beginBtn) because Details now comes
+// before Protocol, so the participant must supply a valid code/date before
+// they can even reach the Protocol overview, rather than being let through
+// to the last screen only to find a disabled button there.
 //
-// The Begin button reads the participant code + session date, saves them
-// into the experiment session object (the same object that will hold
-// Motor Baseline / Subtract-3/7/17 results), starts the experiment
-// controller (WELCOME -> INSTRUCTIONS), and shows the Instructions screen.
+// #beginBtn (on Protocol, now the final step) is what actually reads the
+// participant code + session date, saves them into the experiment session
+// object (the same object that will hold Motor Baseline / Subtract-3/7/17
+// results), starts the experiment controller (WELCOME -> INSTRUCTIONS), and
+// shows the Instructions screen.
 
 import { getExperimentController } from '../experiment/experimentRuntime.js';
 import { showInstructionsScreen } from './instructionsScreen.js';
@@ -16,37 +20,19 @@ import { show, hide } from './transition.js';
 export function initIntakeScreen() {
     const codeInput = document.getElementById('code');
     const dateInput = document.getElementById('date');
+    const step2NextBtn = document.getElementById('step2NextBtn');
     const beginBtn = document.getElementById('beginBtn');
-    const clockElement = document.getElementById('clock');
 
     initWizard();
 
     dateInput.value = todayISO();
 
     function validate() {
-        beginBtn.disabled = !(codeInput.value.trim().length > 0 && dateInput.value.trim().length > 0);
+        step2NextBtn.disabled = !(codeInput.value.trim().length > 0 && dateInput.value.trim().length > 0);
     }
     codeInput.addEventListener('input', validate);
     dateInput.addEventListener('input', validate);
     validate();
-
-    // 12-hour Eastern Time (America/New_York handles EST/EDT automatically),
-    // e.g. "2:54 AM" - deliberately independent of the machine's local
-    // timezone. This is purely a display clock; it has no relationship to
-    // the experiment's own phase timers/countdowns (see timer/timer.js),
-    // which are untouched.
-    const clockFormatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-    });
-
-    function tick() {
-        clockElement.textContent = clockFormatter.format(new Date());
-    }
-    tick();
-    setInterval(tick, 1000);
 
     beginBtn.addEventListener('click', () => {
         const controller = getExperimentController();
@@ -66,7 +52,7 @@ function todayISO() {
 // Drives the 3-step wizard's DOM from intakeWizardState.js's pure step
 // logic. The step content itself (#intakeStep1/2/3) is never
 // unmounted/re-created - only shown/hidden via the app's existing
-// show()/hide() helpers - so the participant code/date inputs in step 3
+// show()/hide() helpers - so the participant code/date inputs in step 2
 // keep whatever value they had regardless of how many times the
 // participant goes back and forth between steps; there is no separate
 // "wizard state" to sync them with.

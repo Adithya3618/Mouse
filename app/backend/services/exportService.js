@@ -1,6 +1,24 @@
 const ExcelJS = require('exceljs');
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('node:url');
+
+// Dual-task counting-sequence continuity (see
+// frontend/js/cognitive/dualTaskContinuity.js's own header, and
+// services/adminQueryService.js's identical use of this same module for
+// Admin Session Review - this is the one other read-time consumer). The
+// participant-facing session JSON posted to /exportSessionResults already
+// carries each phase's own responses in exactly the canonical pre-scoring
+// shape this module expects ({ rawTranscript, parsedNumber, resolved,
+// ... }) - see data/sessionData.js#recordCognitivePerformance /
+// speechProcessingService.js's `results.responses` - so no row-shape
+// adapter is needed here, unlike adminQueryService.js's DB rows.
+const DUAL_TASK_CONTINUITY_URL = pathToFileURL(
+    path.join(__dirname, '../../frontend/js/cognitive/dualTaskContinuity.js')
+).href;
+const SPEECH_SCORING_URL = pathToFileURL(
+    path.join(__dirname, '../../frontend/js/cognitive/speechScoring.js')
+).href;
 
 // Moved verbatim from the original server.js /saveScore handler.
 const excelFilePath = path.join(__dirname, '../../../data/exports/excel/scores.xlsx');
@@ -83,7 +101,68 @@ const SESSION_RESULTS_HEADER_ROW = [
     'Raw Transcript'
 ];
 
+// Re-anchors each dual-task (DUAL_TASK_<n>) phase's responses to its
+// sibling count-only (SUBTRACTION_<n>) phase's actual last valid spoken
+// number - see dualTaskContinuity.js's own header for the full reasoning
+// (identical rule, identical pure computation, to Admin Session Review's
+// use of it in adminQueryService.js). Returns a Map keyed by the dual-task
+// phase's own phaseId -> { continuationAnchor, dualTaskContinuationNumber,
+// scored, countOnlyPhaseId, correctResponses, incorrectResponses,
+// unresolvedResponses, cognitiveAccuracy }. Phases with no cognitivePerformance
+// yet (recording still processing, or phase never reached) are simply
+// absent from the returned map - callers fall back to that phase's own
+// original (non-continuity) values, exactly as before this feature existed.
+async function computeDualTaskContinuity(formattedSession) {
+    const { continueDualTaskScoring, isDualTaskPhaseId, countOnlyPhaseIdFor } = await import(DUAL_TASK_CONTINUITY_URL);
+    const { calculateCognitiveAccuracy } = await import(SPEECH_SCORING_URL);
+
+    const phasesById = new Map(formattedSession.phases.map((phase) => [phase.phaseId, phase]));
+    const continuityByPhaseId = new Map();
+
+    for (const phase of formattedSession.phases) {
+        // Requires actual per-response detail to re-anchor - a phase whose
+        // cognitivePerformance only carries summary counts (no responses
+        // array; not how a real session is ever recorded - see
+        // data/sessionData.js#recordCognitivePerformance - but a legitimate
+        // shape for a caller to pass) is left exactly as originally scored,
+        // the same graceful fallback as an unavailable sibling phase below.
+        if (!isDualTaskPhaseId(phase.phaseId) || !phase.cognitivePerformance
+            || !Array.isArray(phase.cognitivePerformance.responses) || phase.cognitivePerformance.responses.length === 0) {
+            continue;
+        }
+        const countOnlyPhaseId = countOnlyPhaseIdFor(phase.phaseId);
+        const sibling = phasesById.get(countOnlyPhaseId);
+
+        const { continuationAnchor, scored, mapped } = await continueDualTaskScoring({
+            dualTaskResponses: phase.cognitivePerformance.responses,
+            countOnlyResponses: sibling && sibling.cognitivePerformance ? sibling.cognitivePerformance.responses : [],
+            startingNumber: phase.startingNumber,
+            subtractionValue: phase.subtractionValue,
+            mode: phase.cognitivePerformance.scoringMode
+        });
+
+        const correctResponses = scored.filter((r) => r.correctness === 'correct').length;
+        const incorrectResponses = scored.filter((r) => r.correctness === 'incorrect').length;
+        const unresolvedResponses = scored.filter((r) => r.correctness === 'unresolved').length;
+
+        continuityByPhaseId.set(phase.phaseId, {
+            continuationAnchor,
+            dualTaskContinuationNumber: continuationAnchor - phase.subtractionValue,
+            mapped,
+            countOnlyPhaseId,
+            correctResponses,
+            incorrectResponses,
+            unresolvedResponses,
+            cognitiveAccuracy: calculateCognitiveAccuracy(correctResponses, incorrectResponses)
+        });
+    }
+
+    return continuityByPhaseId;
+}
+
 async function buildSessionResultsWorkbook(formattedSession) {
+    const continuityByPhaseId = await computeDualTaskContinuity(formattedSession);
+
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Session Results');
 
@@ -93,6 +172,12 @@ async function buildSessionResultsWorkbook(formattedSession) {
     for (const phase of formattedSession.phases) {
         const mouse = phase.mousePerformance;
         const cognitive = phase.cognitivePerformance;
+        // For dual-task phases, the scoring shown here follows the same
+        // continuation rule as everywhere else - see the module header.
+        // numberOfResponses/rawTranscript are anchor-independent (the
+        // transcript is verbatim, the response count doesn't change) and
+        // are never overridden.
+        const continuity = continuityByPhaseId.get(phase.phaseId);
         worksheet.addRow([
             formattedSession.participantCode ?? '',
             formattedSession.sessionId ?? '',
@@ -109,10 +194,10 @@ async function buildSessionResultsWorkbook(formattedSession) {
             mouse ? Number(mouse.totalAccuracy.toFixed(2)) : '',
             mouse ? Number(mouse.targetEfficiency.toFixed(2)) : '',
             cognitive ? cognitive.numberOfResponses : '',
-            cognitive ? cognitive.correctResponses : '',
-            cognitive ? cognitive.incorrectResponses : '',
-            cognitive ? cognitive.unresolvedResponses : '',
-            cognitive ? Number(cognitive.cognitiveAccuracy.toFixed(2)) : '',
+            cognitive ? (continuity ? continuity.correctResponses : cognitive.correctResponses) : '',
+            cognitive ? (continuity ? continuity.incorrectResponses : cognitive.incorrectResponses) : '',
+            cognitive ? (continuity ? continuity.unresolvedResponses : cognitive.unresolvedResponses) : '',
+            cognitive ? Number((continuity ? continuity.cognitiveAccuracy : cognitive.cognitiveAccuracy).toFixed(2)) : '',
             cognitive ? cognitive.rawTranscript : ''
         ]);
     }
@@ -121,7 +206,60 @@ async function buildSessionResultsWorkbook(formattedSession) {
         column.width = 20;
     });
 
+    addCountingSequenceContinuitySheet(workbook, formattedSession, continuityByPhaseId);
+
     return workbook.xlsx.writeBuffer();
+}
+
+const COUNTING_SEQUENCE_HEADER_ROW = [
+    'Series',
+    'Starting Number',
+    'Count-only phase',
+    'Last valid count-only number',
+    'Dual-task phase',
+    'Dual-task continuation starting number',
+    'Expected sequence',
+    'User Said',
+    'Correct/Incorrect',
+    'Next Expected'
+];
+
+// One row per dual-task response (not per phase) - the detailed,
+// per-response view of the counting-sequence continuity rule requested
+// alongside the summary sheet above. Worked example (researcher-provided):
+// SUBTRACTION_3, starting 825, count-only ends at 759, DUAL_TASK_3
+// continues 756, 753, 750, 747... - each of those is its own row here,
+// with the series-level context columns repeated on every row.
+function addCountingSequenceContinuitySheet(workbook, formattedSession, continuityByPhaseId) {
+    const worksheet = workbook.addWorksheet('Counting Sequence Continuity');
+    worksheet.addRow(COUNTING_SEQUENCE_HEADER_ROW);
+    worksheet.getRow(1).font = { bold: true };
+
+    for (const phase of formattedSession.phases) {
+        const continuity = continuityByPhaseId.get(phase.phaseId);
+        if (!continuity) {
+            continue;
+        }
+        const series = phase.subtractionValue;
+        for (const response of continuity.mapped) {
+            worksheet.addRow([
+                series ?? '',
+                phase.startingNumber ?? '',
+                continuity.countOnlyPhaseId ?? '',
+                continuity.continuationAnchor ?? '',
+                phase.phaseId,
+                continuity.dualTaskContinuationNumber ?? '',
+                response.expectedNumber ?? '',
+                response.actualNumber ?? '',
+                response.correctness ?? '',
+                response.nextExpectedNumber ?? ''
+            ]);
+        }
+    }
+
+    worksheet.columns.forEach((column) => {
+        column.width = 24;
+    });
 }
 
 function sanitizeForFilename(value) {

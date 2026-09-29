@@ -79,6 +79,12 @@ function renderPhaseBlock(phase) {
     meta.textContent = [
         phase.subtractionValue != null ? `Subtract by ${phase.subtractionValue}` : null,
         phase.startingNumber != null ? `Starting number ${phase.startingNumber}` : null,
+        // Dual-task (count-back-and-clicking) phases only - see
+        // adminQueryService.js#_applyDualTaskContinuity: the counting
+        // sequence continues from the count-only phase's own actual last
+        // valid spoken number, not from Starting number again.
+        phase.countOnlyFinalNumber != null ? `Count-only ended at ${phase.countOnlyFinalNumber}` : null,
+        phase.dualTaskContinuationNumber != null ? `Continued from ${phase.dualTaskContinuationNumber}` : null,
         phase.duration != null ? `Duration ${phase.duration}s` : null,
         `Audio: ${phase.recording ? 'Available' : 'Unavailable'}`,
         `Transcript: ${phase.rawTranscript != null ? `Available (v${phase.transcriptionVersion})` : 'Unavailable'}`

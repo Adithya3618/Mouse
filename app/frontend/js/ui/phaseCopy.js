@@ -13,6 +13,29 @@
 // field's own comment.
 export const MOTOR_COUNTDOWN_SEQUENCE = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
 
+// The digit countdown shown before each condition's count-back-only block
+// (PREPARE_SUBTRACTION_<n>) - the same digit-countdown treatment as
+// MOTOR_COUNTDOWN_SEQUENCE above, just a fixed, shorter 3-second sequence.
+// Its length must match config/experimentConfig.js's
+// preCountingTransitionSeconds - see that field's own comment.
+export const SUBTRACTION_PREP_COUNTDOWN_SEQUENCE = [3, 2, 1, 0];
+
+// Spelled-out word form of each configured subtraction value (this
+// protocol's own three conditions - see config/experimentConfig.js's
+// subtractionValues), used ONLY for the count-back-only screens'
+// "Count backward by multiples of <word>" heading/instruction
+// (researcher-requested wording - the starting number itself is always
+// shown as a digit, since it must be read back exactly as displayed).
+const SUBTRACTION_VALUE_WORDS = {
+    3: 'Three',
+    7: 'Seven',
+    17: 'Seventeen'
+};
+
+function subtractionValueWord(value) {
+    return SUBTRACTION_VALUE_WORDS[value] || String(value);
+}
+
 // phaseId -> the subtraction value of the NEXT series, for the short
 // "Next Task" REST screens shown before series 2 and 3 (before series 1,
 // RECOVERY_AFTER_MOTOR gets the long combined explanation instead - see
@@ -46,9 +69,12 @@ export function getPhaseDisplay(phase, phaseRecord) {
             };
 
         case 'cognitive':
+            // Deliberately just the one instruction line - the starting
+            // number is shown separately in its own labeled box
+            // (showStartingNumber below), never restated in prose here.
             return {
-                title: `Count Back by Multiples of ${phase.subtractionValue}`,
-                instruction: `Starting with ${startingNumberLabel}, count backward by multiples of ${phase.subtractionValue} as many times as possible until the timer reaches zero.`,
+                title: `Count Backward by Multiples of ${subtractionValueWord(phase.subtractionValue)}`,
+                instruction: '',
                 showTimer: true,
                 showStartingNumber: true,
                 showPrepCountdown: false,
@@ -57,7 +83,7 @@ export function getPhaseDisplay(phase, phaseRecord) {
 
         case 'dual-task':
             return {
-                title: `Count Back by Multiples of ${phase.subtractionValue} and Clicking`,
+                title: `Count Backward by Multiples of ${phase.subtractionValue} and Clicking`,
                 instruction: `Count backward by multiples of ${phase.subtractionValue} while clicking on the targets, until the timer reaches zero.`,
                 showTimer: true,
                 showStartingNumber: true,
@@ -88,40 +114,41 @@ export function getPhaseDisplay(phase, phaseRecord) {
 // experiment/conditions.js#buildPreparationMetadata, which is what
 // produces the `precedesPhaseType` this switches on.
 //
-// 'motor' still gets the big digit-countdown treatment (showPrepCountdown).
-// 'cognitive'/'dual-task' instead get a "transition" screen
-// (transitionLines) with a normal running timer (showTimer):
-//   - 'cognitive' has two lines - the second starts hidden and is revealed
-//     later by ui/experimentScreen.js, reading the revealSecondLineAtRemaining
-//     field experiment/conditions.js already attached to the phase
-//     descriptor itself.
-//   - 'dual-task' has one static line plus a popping 3/2/1 in its final 3
-//     seconds (ui/experimentScreen.js#updatePopCountdown - same fixed
-//     final-3-seconds timing as 'cognitive''s own pop countdown), so it
-//     needs no second transitionLines entry or reveal field at all.
+// 'motor' AND 'cognitive' both get the big digit-countdown treatment
+// (showPrepCountdown) - MOTOR_COUNTDOWN_SEQUENCE / SUBTRACTION_PREP_COUNTDOWN_SEQUENCE
+// respectively (see ui/experimentScreen.js) - with no running timer
+// (showTimer: false) shown until the countdown itself finishes and the
+// real task phase begins. 'cognitive' additionally shows the upcoming
+// starting number alongside its one instruction line.
+// 'dual-task' instead gets a "transition" screen (transitionLines) with a
+// normal running timer (showTimer) - one static line plus a popping 3/2/1
+// in its final 3 seconds (ui/experimentScreen.js#updatePopCountdown).
 function getPreparationDisplay(phase, startingNumber, startingNumberLabel) {
     const value = phase.subtractionValue;
 
     switch (phase.precedesPhaseType) {
         case 'cognitive':
+            // Same digit-countdown treatment as 'motor' below, just shown
+            // alongside the upcoming starting number - see
+            // SUBTRACTION_PREP_COUNTDOWN_SEQUENCE (3, 2, 1, 0). The single
+            // instruction line is the only copy on this screen; no
+            // transitionLines/running timer, matching the
+            // "count-back-only screen" requirement that no other
+            // instructional text appears here.
             return {
-                title: `Count Back by Multiples of ${value}`,
+                title: `Count Backward by Multiples of ${subtractionValueWord(value)}`,
                 instruction: '',
-                transitionLines: [
-                    `Next you will count back by multiples of ${value} from a random number which will appear on the next screen.`,
-                    `Count back by ${value} from…`
-                ],
-                showTimer: true,
-                showStartingNumber: false,
-                showPrepCountdown: false,
+                showTimer: false,
+                showStartingNumber: true,
+                showPrepCountdown: true,
                 startingNumber
             };
 
         case 'dual-task':
             return {
-                title: `Count Back by Multiples of ${value} and Clicking`,
+                title: `Count Backward by Multiples of ${value} and Clicking`,
                 instruction: '',
-                transitionLines: [`Count back by ${value} from a new number…`],
+                transitionLines: [`Continue counting backward by ${value}…`],
                 showTimer: true,
                 // The starting number now shows on the DUAL_TASK_<n> screen
                 // itself instead (see ui/experimentScreen.js's counting
@@ -157,7 +184,7 @@ function getRecoveryDisplay(phase) {
     const paragraphs = nextValue != null
         ? [
             `After this rest, you will count backward by multiples of ${nextValue}, starting from a random number that will appear on the next screen.`,
-            `Once the count-back-only block ends, watch for the short countdown — you will then be given a new random number to count backward from while clicking the targets as soon as they appear.`
+            `Once the count-back-only block ends, watch for the short countdown — you will then continue counting backward from the number you reached while clicking the targets as soon as they appear.`
         ]
         : [
             'As you rest, I will explain the three upcoming series of counting backward and counting backward while clicking.',
@@ -189,16 +216,19 @@ function getRecoveryInfoDisplay() {
 instruction: '',
 
 paragraphs: [
-    'After the counting-only portion, you will immediately begin the counting and clicking portion without a rest period. You will be given a new random number to count backward from.',
+    'After the counting-only portion, you will immediately begin the counting and clicking portion without a rest period.',
 
     'A 5-second countdown will prepare you for the clicking task. Continue counting backward during the countdown. When the countdown ends, dots will begin randomly appearing and disappearing on the screen.',
 
     'When the dots appear, continue counting backward and begin clicking them as quickly and accurately as possible. Continue both tasks at the same time until the timer runs out.',
 
-    'This same procedure will be used for counting backward by 3, by 7, and by 17. For each series, you will first count backward without clicking, then receive a new random number for the counting-and-clicking portion.',
+    'This same procedure will be used for counting backward by 3, by 7, and by 17. For each series, you will first count backward without clicking, then continue counting backward from where you left off for the counting-and-clicking portion.',
 
     'Remember to speak clearly and at an audible volume throughout the task so that the recording can capture each number you say.'
 ],
+
+// Indexes into paragraphs above rendered in bold (see ui/experimentScreen.js).
+emphasizedParagraphs: [3],
 
 showTimer: true,
 showStartingNumber: false,

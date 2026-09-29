@@ -76,7 +76,11 @@ const defaultMouseTaskAdapter = {
         const elements = getMouseTaskElements();
         if (!elements) {
             logger(`${phaseDescriptor.phaseId}: mouse task screen not built yet - skipping mouse task for this phase.`);
-            return;
+            // { started: false } lets the caller (see the mouseActive block
+            // in _enterPhase below) resolve its pending-mouse-performance
+            // tracking immediately in this case - onComplete will otherwise
+            // never fire, since no mouse task actually started.
+            return { started: false };
         }
 
         const { playMouseSession } = await import('../mouse/mouseSession.js');
@@ -98,6 +102,7 @@ const defaultMouseTaskAdapter = {
             },
             onComplete
         );
+        return { started: true };
     },
     stop() {
         // The existing mouse task always runs for its full configured
@@ -140,14 +145,17 @@ export class ExperimentController {
         this._currentSubtractionTask = null;
         this._currentCognitiveAudioSession = null;
         this._lastStartingNumber = null;
-        // Keyed by "<subtractionValue>:<taskFamily>" (see
-        // _taskFamilyFor/_getOrCreateStartingNumber below) - one independent
-        // random number per real task phase (6 total: count-back-only and
-        // count-back-and-clicking for each of 3/7/17), not one shared
-        // per subtraction value. A PREPARE_<task>_<n> phase and the task
-        // phase it leads into still share one number (same key), so the
-        // "get ready" screen previews the number that phase is about to use.
-        this._taskStartingNumbers = {};
+        // PROTOCOL: exactly one random starting number per subtraction
+        // series (3/7/17) - shared by that series' count-back-only AND
+        // count-back-and-clicking phases (and both phases' own PREPARE_<n>
+        // lead-in), keyed purely by subtractionValue. The dual-task phase's
+        // COUNTING SEQUENCE itself still continues from wherever the
+        // participant's actual last valid count-only response left off
+        // (not from this starting number again) - that continuity is
+        // computed at read time from real transcribed responses, not by
+        // generating/storing a second number here. See
+        // cognitive/dualTaskContinuity.js for that piece.
+        this._conditionStartingNumbers = {};
 
         // Every in-flight recording upload/transcription/scoring promise
         // for this session, in phase order - NEVER awaited here (that would
@@ -155,6 +163,25 @@ export class ExperimentController {
         // before showing final cognitive results/enabling export - see
         // getPendingCognitiveProcessing().
         this._pendingCognitiveProcessing = [];
+
+        // Same idea as _pendingCognitiveProcessing above, for the mouse
+        // task: one promise per mouseActive phase, resolved once that
+        // phase's own onComplete callback has actually fired (see the
+        // mouseActive block in _enterPhase below) - NEVER awaited here.
+        // This exists specifically because the mouse task runs on its own
+        // independent real-time duration, started after an async dynamic
+        // import, so its onComplete typically fires slightly AFTER this
+        // phase's own Timer reaches zero. For every mouseActive phase
+        // except the final condition's DUAL_TASK_<n>, the phase that
+        // follows (a REST/RECOVERY_AFTER_DUAL_<n>, or MOTOR_BASELINE's own
+        // RECOVERY_AFTER_MOTOR) runs long enough that onComplete has always
+        // already fired before results are shown. The final condition's
+        // dual-task phase has no recovery phase after it - COMPLETE follows
+        // immediately - so without this, its mousePerformance could still
+        // be missing (null) when the results screen renders and the
+        // Excel/Admin-facing data is built. See
+        // getPendingMousePerformance()/ui/resultsScreen.js#renderResults.
+        this._pendingMousePerformance = [];
 
         // True only while the CURRENT phase is a recovery phase whose timer
         // has already reached zero, but the participant has not yet clicked
@@ -232,8 +259,9 @@ export class ExperimentController {
         });
         this._fsm.reset();
         this._lastStartingNumber = null;
-        this._taskStartingNumbers = {};
+        this._conditionStartingNumbers = {};
         this._pendingCognitiveProcessing = [];
+        this._pendingMousePerformance = [];
         this._logger(`Experiment initialized (session ${this._session.sessionId})`);
         return this._session;
     }
@@ -295,17 +323,17 @@ export class ExperimentController {
         // (see phaseCopy.js). Starting the SubtractionTask itself (real
         // cognitive-task timing) is gated separately on cognitiveActive,
         // so it does NOT start during preparation - only once the actual
-        // SUBTRACTION_<n>/DUAL_TASK_<n> phase begins. Independently
-        // randomized per task family (see _taskFamilyFor) - PREPARE_SUBTRACTION_<n>
-        // and SUBTRACTION_<n> share one number, PREPARE_DUAL_TASK_<n> and
-        // DUAL_TASK_<n> share a separate one, so the count-back-only and
-        // count-back-and-clicking blocks of the same condition never reuse
-        // each other's number.
+        // SUBTRACTION_<n>/DUAL_TASK_<n> phase begins. PROTOCOL: one shared
+        // random number per series (keyed purely by subtractionValue) -
+        // PREPARE_SUBTRACTION_<n>, SUBTRACTION_<n>, PREPARE_DUAL_TASK_<n>,
+        // and DUAL_TASK_<n> all reuse the exact same number. The
+        // count-back-and-clicking phase's actual counting sequence still
+        // continues from the participant's real last valid count-only
+        // response, not from this number again - see
+        // cognitive/dualTaskContinuity.js, applied at read time
+        // (Admin Session Review / Excel export), not here.
         if (phaseDescriptor.subtractionValue != null) {
-            extra.startingNumber = this._getOrCreateStartingNumber(
-                phaseDescriptor.subtractionValue,
-                this._taskFamilyFor(phaseDescriptor)
-            );
+            extra.startingNumber = this._getOrCreateStartingNumber(phaseDescriptor.subtractionValue);
         }
 
         if (phaseDescriptor.cognitiveActive && extra.startingNumber != null) {
@@ -356,6 +384,14 @@ export class ExperimentController {
             // record object sidesteps that race entirely.
             const phaseRecordForMouseResults = this._currentPhaseRecord;
 
+            // Tracked (see _pendingMousePerformance's own comment above)
+            // but never awaited here - only this phase's own Timer (below)
+            // is allowed to call advance().
+            let resolvePendingMousePerformance;
+            this._pendingMousePerformance.push(
+                new Promise((resolve) => { resolvePendingMousePerformance = resolve; })
+            );
+
             // Intentionally not awaited: the mouse task's own lifecycle
             // must never gate phase advancement - only this phase's Timer
             // (below) is allowed to call advance(). Any failure here is
@@ -370,20 +406,51 @@ export class ExperimentController {
                             totalClicks: result.clickCount,
                             totalHits: result.hitCount
                         });
+                        resolvePendingMousePerformance();
                     },
                     { logger: this._logger }
                 )
-            ).catch((error) => this._logger(`${phaseDescriptor.phaseId}: mouse task adapter failed - ${error.message}`));
+            ).then((startResult) => {
+                // No mouse task actually started for this phase (see
+                // defaultMouseTaskAdapter's own { started: false } return
+                // above) - onComplete will never fire, so resolve here
+                // instead of leaving this phase's pending promise hanging
+                // forever. A no-op if onComplete already resolved it above.
+                if (startResult && startResult.started === false) {
+                    resolvePendingMousePerformance();
+                }
+            }).catch((error) => {
+                this._logger(`${phaseDescriptor.phaseId}: mouse task adapter failed - ${error.message}`);
+                resolvePendingMousePerformance();
+            });
         }
 
         if (phaseDescriptor.duration != null) {
-            const isRecovery = phaseDescriptor.phaseType === 'recovery';
+            // Recovery AND recovery-info: the countdown itself is completely
+            // unchanged (same configured duration, same per-second ticks via
+            // onTick below, same displayed "Time Remaining") - only what
+            // happens the instant it reaches zero differs. Every other timed
+            // phase (the actual scored tasks - motor/cognitive/dual-task,
+            // which have no narration audio at all) keeps the original
+            // "timer ends -> advance immediately" behavior, completely
+            // untouched.
+            //
+            // recovery-info used to call this.advance() directly here, same
+            // as a normal task phase - but unlike a task phase, it has
+            // narration audio (see ui/experimentScreen.js's
+            // RECOVERY_AUDIO_FILE_BY_PHASE_ID), and that audio can run
+            // longer than this configured duration. Routing it through the
+            // same ready-flag path as 'recovery' (instead of a bespoke
+            // third branch) means the UI layer - never this controller,
+            // which has no concept of audio - decides exactly when to call
+            // proceedFromRecovery(): immediately if nothing is playing
+            // (identical to the old behavior), or once the audio finishes
+            // if it's still going, so an unusually long recording is never
+            // cut off. The configured duration/timer is not changed by any
+            // of this - only the moment the resulting advance fires is
+            // deferred, and only when audio is genuinely still playing.
+            const isRecovery = phaseDescriptor.phaseType === 'recovery' || phaseDescriptor.phaseType === 'recovery-info';
             this._currentTimer = this._timerFactory({
-                // Recovery: the countdown itself is completely unchanged
-                // (same duration, same per-second ticks via onTick below) -
-                // only what happens the instant it reaches zero differs.
-                // Every other timed phase keeps the original
-                // "timer ends -> advance immediately" behavior.
                 onComplete: () => {
                     if (isRecovery) {
                         this._recoveryReadyToProceed = true;
@@ -402,15 +469,20 @@ export class ExperimentController {
         }
     }
 
-    // The only thing that may advance past a recovery phase - called by the
-    // UI when the participant clicks "Proceed", and ONLY takes effect if
-    // this recovery phase's timer has genuinely already reached zero
+    // The only thing that may advance past a recovery (or recovery-info)
+    // phase - called by the UI either when the participant clicks "Proceed"
+    // (phaseType 'recovery'), or automatically once recovery-info's
+    // narration audio finishes playing/was never playing (see
+    // ui/experimentScreen.js's onRecoveryReady handler) - and ONLY takes
+    // effect if this phase's timer has genuinely already reached zero
     // (isRecoveryReadyToProceed() below is what the UI gates the button's
     // very existence on, so this guard is a second, independent line of
     // defense, not the only one). Clears the ready flag BEFORE calling
     // advance(), so a duplicate/double-click (or two rapid calls for any
     // other reason) can only ever advance once - the second call sees the
-    // flag already false and is a no-op.
+    // flag already false and is a no-op. Returns whether it actually
+    // advanced (false = no-op), which the UI uses to avoid ever double-
+    // firing the recovery-info audio-ended path.
     proceedFromRecovery() {
         if (!this._recoveryReadyToProceed) {
             return false;
@@ -420,10 +492,12 @@ export class ExperimentController {
         return true;
     }
 
-    // Whether the current phase is a recovery phase whose timer has already
-    // finished - i.e. whether the UI should be showing an enabled Proceed
-    // button right now. Always false for every other phaseType, and false
-    // for a recovery phase whose timer is still counting down.
+    // Whether the current phase is a recovery/recovery-info phase whose
+    // timer has already finished - i.e. whether the UI should be showing an
+    // enabled Proceed button (phaseType 'recovery') or may auto-proceed
+    // once audio allows it (phaseType 'recovery-info') right now. Always
+    // false for every other phaseType, and false while the timer is still
+    // counting down.
     isRecoveryReadyToProceed() {
         return this._recoveryReadyToProceed;
     }
@@ -482,30 +556,25 @@ export class ExperimentController {
     }
 
     // A new random number is generated the first time a given subtraction
-    // value is encountered (during SUBTRACTION_<n>) and reused for that
-    // same condition's DUAL_TASK_<n> phase. It is guaranteed to differ
-    // from the previous condition's number.
-    // 'preparation' phases don't carry their own task identity - they
-    // borrow the type of the task they precede, so PREPARE_SUBTRACTION_<n>
-    // groups with SUBTRACTION_<n> ('cognitive') and PREPARE_DUAL_TASK_<n>
-    // groups with DUAL_TASK_<n> ('dual-task').
-    _taskFamilyFor(phaseDescriptor) {
-        return phaseDescriptor.phaseType === 'preparation'
-            ? phaseDescriptor.precedesPhaseType
-            : phaseDescriptor.phaseType;
-    }
-
-    _getOrCreateStartingNumber(subtractionValue, taskFamily) {
-        const key = `${subtractionValue}:${taskFamily}`;
-        if (this._taskStartingNumbers[key] == null) {
+    // value is encountered (during PREPARE_SUBTRACTION_<n>) and reused for
+    // every other phase in that same series - PREPARE_SUBTRACTION_<n>,
+    // SUBTRACTION_<n>, PREPARE_DUAL_TASK_<n>, DUAL_TASK_<n> - per the
+    // research protocol's "one starting number per series" rule (this is
+    // what the protocol calls "Random Number #1/#2/#3"). It is guaranteed
+    // to differ from the previous series' number. The dual-task phase's
+    // actual counting sequence does NOT restart from this number - it
+    // continues from the participant's real last valid count-only
+    // response; see cognitive/dualTaskContinuity.js.
+    _getOrCreateStartingNumber(subtractionValue) {
+        if (this._conditionStartingNumbers[subtractionValue] == null) {
             const number = this._randomNumberGenerator(
                 this._config.randomStartingNumberRange,
                 this._lastStartingNumber
             );
-            this._taskStartingNumbers[key] = number;
+            this._conditionStartingNumbers[subtractionValue] = number;
             this._lastStartingNumber = number;
         }
-        return this._taskStartingNumbers[key];
+        return this._conditionStartingNumbers[subtractionValue];
     }
 
     // --- reporting hooks -------------------------------------------------
@@ -562,6 +631,15 @@ export class ExperimentController {
     // ever having delayed the experiment itself to get here.
     getPendingCognitiveProcessing() {
         return [...this._pendingCognitiveProcessing];
+    }
+
+    // Every mouse-task completion promise still in flight across the whole
+    // session so far - see _pendingMousePerformance's own comment above.
+    // ui/resultsScreen.js awaits all of these (Promise.allSettled) before
+    // rendering the mouse-performance table, without ever having delayed
+    // the experiment itself to get here.
+    getPendingMousePerformance() {
+        return [...this._pendingMousePerformance];
     }
 
     getSession() {

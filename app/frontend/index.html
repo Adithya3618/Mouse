@@ -25,66 +25,87 @@
 <span class="frame-debug-label" id="frameLabelIntake"></span>
 <div class="wrap">
 
-  <div class="topbar">
-    <span class="eyebrow">Session Intake</span>
-    <span class="clock mono" id="clock">— : —</span>
-  </div>
+
 
   <!-- STEP 1: OVERVIEW - eyebrow + title + one-line tagline, nothing else. -->
   <div class="intake-step" id="intakeStep1">
     <h1>Motor&#8211;Cognitive<br><em>Dual&#8209;Task</em></h1>
-    <p class="subhead">A short clicking-only baseline followed by three rounds of counting backward — with and without clicking.</p>
 
-    <div class="pulse-row">
-      <span class="pulse-meta">10 phases · ~16 min</span>
-    </div>
-
+    <!-- Single child, no leading placeholder span (unlike step 2/3's own
+         .step-nav usage - see css/intake.css's shared rule, unchanged) -
+         with .step-nav's justify-content:space-between and only one flex
+         item, it sits at the start (left, under the title) instead of
+         being pushed to the far right. -->
     <div class="step-nav">
-      <span></span>
       <button type="button" class="begin" id="step1NextBtn">Read instructions <span class="arrow">→</span></button>
     </div>
   </div>
 
-  <!-- STEP 2: PROTOCOL - the full phase-by-phase timeline. -->
+  <!-- STEP 2: DETAILS - participant code + date, then Begin session.
+       (Moved ahead of Protocol below - see js/ui/intakeScreen.js's own
+       comment on why #beginBtn's validation gating moved here with it.) -->
   <div class="intake-step" id="intakeStep2" hidden>
+    <div class="field">
+      <label for="code">Participant code</label>
+      <input type="text" id="code" placeholder="e.g. P014">
+
+    </div>
+
+    <div class="field">
+      <label for="date">Session date</label>
+      <input type="date" id="date">
+    </div>
+
+    <div class="step-nav">
+      <button type="button" class="step-back" id="step2BackBtn">← Back</button>
+      <button type="button" class="begin" id="step2NextBtn" disabled>
+        Begin session <span class="arrow">→</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- STEP 3: PROTOCOL - the full phase-by-phase timeline, shown last
+       (right before the real experiment) now - see index.html's own step
+       order and js/ui/intakeScreen.js. -->
+  <div class="intake-step" id="intakeStep3" hidden>
     <div class="panel">
       <div class="panel-title"><span>Protocol overview</span><span>10 phases</span></div>
       <div class="phase-list">
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Clicking only</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Click only</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Motor task</div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
+          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1 minute 30 sec</span></div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Count back by 3</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count Backward by 3</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Counting only</div>
         </div>
         <div class="phase dual">
-          <div class="phase-row"><span class="phase-name">Count back by 3 and clicking</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count Backward by 3 and click</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Dual task</div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
+          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1 minute 30 sec</span></div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Count back by 7</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count Backward by 7</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Counting only</div>
         </div>
         <div class="phase dual">
-          <div class="phase-row"><span class="phase-name">Count back by 7 and clicking</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count Backward by 7 and click</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Dual task</div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
+          <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1 minute 30 sec</span></div>
         </div>
         <div class="phase">
-          <div class="phase-row"><span class="phase-name">Count back by 17</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count Backward by 17</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Counting only</div>
         </div>
         <div class="phase dual">
-          <div class="phase-row"><span class="phase-name">Count back by 17 and clicking</span><span class="phase-time">2:00</span></div>
+          <div class="phase-row"><span class="phase-name">Count Backward by 17 and click</span><span class="phase-time">2 minutes</span></div>
           <div class="phase-sub">Dual task</div>
         </div>
       </div>
@@ -95,28 +116,9 @@
     </div>
 
     <div class="step-nav">
-      <button type="button" class="step-back" id="step2BackBtn">← Back</button>
-      <button type="button" class="begin" id="step2NextBtn">Enter session details <span class="arrow">→</span></button>
-    </div>
-  </div>
-
-  <!-- STEP 3: DETAILS - participant code + date, then Begin session. -->
-  <div class="intake-step" id="intakeStep3" hidden>
-    <div class="field">
-      <label for="code">Participant code</label>
-      <input type="text" id="code" placeholder="e.g. P014">
-      <div class="hint">Matches the code on the participant's consent form.</div>
-    </div>
-
-    <div class="field">
-      <label for="date">Session date</label>
-      <input type="date" id="date">
-    </div>
-
-    <div class="step-nav">
       <button type="button" class="step-back" id="step3BackBtn">← Back</button>
-      <button class="begin" id="beginBtn" disabled>
-        Begin session <span class="arrow">→</span>
+      <button class="begin" id="beginBtn">
+        Continue <span class="arrow">→</span>
       </button>
     </div>
 
@@ -127,10 +129,10 @@
 
 <section id="screen-instructions" class="screen" hidden>
 <span class="frame-debug-label">4</span>
-<div class="wrap">
 
-  <div class="topbar">
-    <span class="eyebrow">Instructions</span>
+
+ 
+   
   </div>
 
   <!-- Two-column guided walkthrough: LEFT is the persistent, display-only
@@ -148,34 +150,34 @@
       <p class="subhead" id="participantSummary"></p>
       <div class="phase-list" id="instructionsPhaseList">
           <div class="phase" data-step="1">
-            <div class="phase-row"><span class="phase-name">Clicking only</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Click only</span><span class="phase-time">2:00</span></div>
           </div>
           <div class="phase" data-step="2">
             <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
           </div>
           <div class="phase" data-step="3">
-            <div class="phase-row"><span class="phase-name">Count back by 3</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Count Backward by 3</span><span class="phase-time">2:00</span></div>
           </div>
           <div class="phase dual" data-step="4">
-            <div class="phase-row"><span class="phase-name">Count back by 3 and clicking</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Count Backward by 3 and click</span><span class="phase-time">2:00</span></div>
           </div>
           <div class="phase" data-step="5">
             <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
           </div>
           <div class="phase" data-step="6">
-            <div class="phase-row"><span class="phase-name">Count back by 7</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Count Backward by 7</span><span class="phase-time">2:00</span></div>
           </div>
           <div class="phase dual" data-step="7">
-            <div class="phase-row"><span class="phase-name">Count back by 7 and clicking</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Count Backward by 7 and click</span><span class="phase-time">2:00</span></div>
           </div>
           <div class="phase" data-step="8">
             <div class="phase-row"><span class="phase-name">REST</span><span class="phase-time">1:30</span></div>
           </div>
           <div class="phase" data-step="9">
-            <div class="phase-row"><span class="phase-name">Count back by 17</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Count Backward by 17</span><span class="phase-time">2:00</span></div>
           </div>
           <div class="phase dual" data-step="10">
-            <div class="phase-row"><span class="phase-name">Count back by 17 and clicking</span><span class="phase-time">2:00</span></div>
+            <div class="phase-row"><span class="phase-name">Count Backward by 17 and click</span><span class="phase-time">2:00</span></div>
           </div>
         </div>
     </div>
@@ -260,14 +262,6 @@
         </button>
       </div>
     </div>
-
-    <!-- Small, deliberately muted shortcut past the whole 10-step preview
-         walkthrough, straight to the existing "Before You Begin" hand-off
-         (#screen-experiment-entry) - the exact same target/transition as
-         step 10's own Continue button (see initInstructionsScreen in
-         js/ui/instructionsScreen.js). Only skips this preview; the real
-         timed experiment after "Before You Begin" is entirely unaffected. -->
-    <button type="button" class="instructions-skip" id="skipInstructionsBtn">Skip Instructions <span class="arrow">→</span></button>
 
   </div>
 
@@ -382,21 +376,20 @@
     </div>
     <p class="instructions-audio-fallback" id="recoveryAudioFallback" hidden>Audio not yet available.</p>
 
-    <!-- Lead-in screens before count-back-only/dual-task. Count-back-only's
-         has two lines, the second revealed partway through by
-         js/ui/experimentScreen.js (see phase.revealSecondLineAtRemaining);
-         dual-task's has just #transitionLine1 (its second line is the
+    <!-- Dual-task lead-in only now - count-back-only's own lead-in uses
+         the digit countdown (#prepCountdown below) instead, same as
+         clicking-only's. Just #transitionLine1 (its second line is the
          popping #transitionPopCountdown below instead). -->
     <div class="transition-lines" id="transitionLines" hidden>
       <p class="transition-line" id="transitionLine1"></p>
       <p class="transition-line" id="transitionLine2"></p>
     </div>
 
-    <!-- Pre-counting and dual-task transitions (precedesPhaseType
-         "cognitive"/"dual-task"): a popping 3/2/1 shown in the lead-in's
-         final 3 seconds - purely a visual addition on top of
-         #transitionLines above, no effect on this screen's duration or
-         when it advances (see js/ui/experimentScreen.js#updatePopCountdown). -->
+    <!-- Dual-task transition (precedesPhaseType "dual-task"): a popping
+         3/2/1 shown in the lead-in's final 3 seconds - purely a visual
+         addition on top of #transitionLines above, no effect on this
+         screen's duration or when it advances (see
+         js/ui/experimentScreen.js#updatePopCountdown). -->
     <div class="transition-pop-countdown" id="transitionPopCountdown" hidden>
       <span class="transition-pop-countdown-value" id="transitionPopCountdownValue"></span>
     </div>
@@ -406,17 +399,19 @@
       <span class="starting-number-value mono" id="startingNumberValue">—</span>
     </div>
 
-    <!-- Clicking-only lead-in ONLY - a literal 10/9/8/.../1/0 countdown
-         (see js/ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE), not a generic
-         "3/2/1/BEGIN" - every other lead-in uses #transitionLines above
-         instead. This is the only text shown here - body.fullscreen-task
-         (css/experiment-screen.css) hides .task-title/.task-instruction
-         during this phase, by design, so a dedicated heading is used
-         instead of reusing either of those. Static text: this countdown is
-         only ever shown before MOTOR_BASELINE, so there's nothing to
-         branch on. -->
+    <!-- Clicking-only AND count-back-only lead-ins - a literal digit
+         countdown (see js/ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE /
+         #SUBTRACTION_PREP_COUNTDOWN_SEQUENCE); dual-task's lead-in uses
+         #transitionLines above instead. This is the only text shown here
+         for clicking-only - body.fullscreen-task (css/experiment-screen.css)
+         hides .task-title/.task-instruction during that phase, by design,
+         so a dedicated heading is used instead of reusing either of those.
+         For count-back-only, the heading + the starting number block above
+         are shown together instead. #prepCountdownHeading's text is set
+         per-phase by js/ui/experimentScreen.js (not static any more, now
+         that two different lead-ins share this block). -->
     <div class="prep-countdown" id="prepCountdown" hidden>
-      <p class="prep-countdown-heading">Begin clicking in</p>
+      <p class="prep-countdown-heading" id="prepCountdownHeading">Begin clicking in</p>
       <span class="prep-countdown-value mono" id="prepCountdownValue">10</span>
     </div>
 
@@ -512,11 +507,6 @@
           <tbody id="cognitivePerformanceTableBody"></tbody>
         </table>
       </div>
-    </div>
-
-    <div class="results-section">
-      <h2 class="results-heading">Starting Numbers</h2>
-      <dl class="starting-numbers-list" id="startingNumbersList"></dl>
     </div>
 
     <div class="results-section export-section">

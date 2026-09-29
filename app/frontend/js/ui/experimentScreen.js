@@ -5,14 +5,13 @@
 // template per phase.
 //
 // This module never creates its own timer. The on-screen "Time Remaining"
-// value, the "10/9/8/.../1/0" clicking-only countdown, the pre-counting
-// lead-in's second-line reveal, and both lead-ins' popping 3/2/1 are all
-// written only from controller.onPhaseTick(), which is fed by the same
-// Timer instance that actually advances the experiment - one source of
-// truth for phase timing.
+// value, the clicking-only/count-back-only digit countdowns, and the
+// dual-task lead-in's popping 3/2/1 are all written only from
+// controller.onPhaseTick(), which is fed by the same Timer instance that
+// actually advances the experiment - one source of truth for phase timing.
 
 import { getExperimentController } from '../experiment/experimentRuntime.js';
-import { getPhaseDisplay, MOTOR_COUNTDOWN_SEQUENCE } from './phaseCopy.js';
+import { getPhaseDisplay, MOTOR_COUNTDOWN_SEQUENCE, SUBTRACTION_PREP_COUNTDOWN_SEQUENCE } from './phaseCopy.js';
 import { formatTime } from '../timer/timer.js';
 import { show, hide } from './transition.js';
 import { renderResults } from './resultsScreen.js';
@@ -39,11 +38,12 @@ const RECOVERY_AUDIO_FILE_BY_PHASE_ID = {
     RECOVERY_AFTER_DUAL_7: '/audio/experiment/recovery-after-dual-7.mp3'
 };
 
-// Task-status pills only make sense for the three phases where the
-// participant is actively doing (or not doing) one or both tasks -
-// Preparation/Recovery are "get ready"/"pause" phases, not task phases
-// (and are correctly mouseActive=false/cognitiveActive=false throughout).
-const PILL_ELIGIBLE_PHASE_TYPES = new Set(['motor', 'cognitive', 'dual-task']);
+// Task-status pills - only shown for phases where more than one task
+// modality could plausibly be active at once (currently just 'dual-task';
+// 'motor' keeps a single "Click targets" pill for consistency). The
+// count-back-only screen ('cognitive') never shows these - it has exactly
+// one thing happening (counting aloud) and no toggle-able status to report.
+const PILL_ELIGIBLE_PHASE_TYPES = new Set(['motor', 'dual-task']);
 
 // A phase is shown "stripped down to just the box with the dots" - no
 // header, nav, or other chrome - only while the participant is actively
@@ -90,6 +90,7 @@ export function initExperimentScreen() {
     const startingNumberValue = document.getElementById('startingNumberValue');
 
     const prepCountdown = document.getElementById('prepCountdown');
+    const prepCountdownHeading = document.getElementById('prepCountdownHeading');
     const prepCountdownValue = document.getElementById('prepCountdownValue');
 
     const completePanel = document.getElementById('completePanel');
@@ -129,39 +130,90 @@ export function initExperimentScreen() {
         renderTaskScreen(phase, controller.getCurrentPhaseRecord());
     });
 
-    // Fires only when a recovery phase's timer reaches zero (see
-    // experimentController.js#onRecoveryReady) - never a real phase change,
-    // so this only ever needs to reveal the button, not re-render anything
-    // else (which would otherwise reset the just-finished countdown display
-    // back to its starting value).
+    // recovery-info's audio/timer synchronization (see
+    // experimentController.js#_enterPhase's own comment on why
+    // recovery-info now routes through onRecoveryReady instead of
+    // advance()-ing directly): at most one 'ended' listener is ever pending
+    // at a time (recovery-info occurs exactly once per session), but it's
+    // still explicitly cleared whenever it's no longer relevant - either
+    // because it fired, or because the participant early-skipped before it
+    // did - so a later, unrelated phase's audio finishing naturally can
+    // never be mistaken for this one and trigger a spurious advance.
+    let pendingRecoveryInfoAudioEndedListener = null;
+
+    function clearPendingRecoveryInfoAudioEndedListener() {
+        if (pendingRecoveryInfoAudioEndedListener) {
+            document.getElementById('recoveryAudioPlayer').removeEventListener('ended', pendingRecoveryInfoAudioEndedListener);
+            pendingRecoveryInfoAudioEndedListener = null;
+        }
+    }
+
+    // Fires only when a recovery/recovery-info phase's timer reaches zero
+    // (see experimentController.js#onRecoveryReady) - never a real phase
+    // change, so this only ever needs to reveal the button (or, for
+    // recovery-info, decide when to proceed), not re-render anything else
+    // (which would otherwise reset the just-finished countdown display back
+    // to its starting value).
     controller.onRecoveryReady((phase) => {
-        if (!phase || phase.phaseType !== 'recovery') {
+        if (!phase) {
             return;
         }
-        recoveryProceedBtn.hidden = false;
-        recoveryProceedBtn.disabled = false;
+        if (phase.phaseType === 'recovery') {
+            recoveryProceedBtn.hidden = false;
+            recoveryProceedBtn.disabled = false;
+            return;
+        }
+        if (phase.phaseType === 'recovery-info') {
+            // The configured duration/timer already fully elapsed by the
+            // time this fires (unchanged from before - see
+            // experimentController.js) - this only decides the moment
+            // proceedFromRecovery() actually runs, never whether or how
+            // long the timer itself ran. If the narration audio is
+            // genuinely still playing right now, wait for it to finish
+            // naturally instead of cutting it off; otherwise (already
+            // finished, never started, or autoplay didn't fire) proceed
+            // immediately - identical to the old "timer ends -> advance"
+            // behavior for every case that isn't "audio outlasted the
+            // timer."
+            const player = document.getElementById('recoveryAudioPlayer');
+            if (player.paused) {
+                controller.proceedFromRecovery();
+                return;
+            }
+            clearPendingRecoveryInfoAudioEndedListener();
+            pendingRecoveryInfoAudioEndedListener = () => {
+                pendingRecoveryInfoAudioEndedListener = null;
+                controller.proceedFromRecovery();
+            };
+            player.addEventListener('ended', pendingRecoveryInfoAudioEndedListener, { once: true });
+        }
     });
 
     recoveryProceedBtn.addEventListener('click', () => {
         // Disable/hide immediately, before the controller call even
         // returns - this is the UI-side half of the "advance exactly
         // once" guarantee (experimentController.js#proceedFromRecovery is
-        // the other half, via its own _recoveryReadyToProceed flag, for
-        // phaseType 'recovery'; 'recovery-info' below has no such gate to
-        // begin with, so hiding/disabling here is just the ordinary
-        // double-click guard). A second click on an already-hidden,
-        // already-disabled button cannot dispatch another click event at all.
+        // the other half, via its own _recoveryReadyToProceed flag). A
+        // second click on an already-hidden, already-disabled button
+        // cannot dispatch another click event at all.
         recoveryProceedBtn.disabled = true;
         recoveryProceedBtn.hidden = true;
 
         // RECOVERY_AFTER_MOTOR_INFO (phaseType 'recovery-info', shown only
-        // right after RECOVERY_AFTER_MOTOR) auto-advances on its own Timer
-        // like any normal phase - this button is available from the moment
-        // it starts purely as an early-skip, so it calls advance()
-        // directly rather than proceedFromRecovery() (which only ever
-        // applies to phaseType 'recovery').
+        // right after RECOVERY_AFTER_MOTOR) makes this button available
+        // from the moment the phase starts, purely as an early-skip - the
+        // participant can jump ahead at any time, even before the timer
+        // (and thus before any audio-completion wait above) would
+        // otherwise proceed on their own. It still calls advance()
+        // directly rather than proceedFromRecovery() (which only takes
+        // effect once the timer has genuinely finished - see that
+        // method's own comment) - an early-skip is explicitly allowed to
+        // cut in before that. Clearing the pending audio-ended listener
+        // here prevents it from later firing against whatever unrelated
+        // phase's audio happens to finish next.
         const currentPhase = controller.getCurrentPhase();
         if (currentPhase && currentPhase.phaseType === 'recovery-info') {
+            clearPendingRecoveryInfoAudioEndedListener();
             controller.advance();
             return;
         }
@@ -174,8 +226,8 @@ export function initExperimentScreen() {
             return;
         }
 
-        if (phase.phaseType === PREPARATION_PHASE_TYPE && phase.precedesPhaseType === 'motor') {
-            prepCountdownValue.textContent = formatMotorCountdownValue(remainingSeconds, phase.duration);
+        if (phase.phaseType === PREPARATION_PHASE_TYPE && (phase.precedesPhaseType === 'motor' || phase.precedesPhaseType === 'cognitive')) {
+            prepCountdownValue.textContent = formatCountdownValue(countdownSequenceFor(phase.precedesPhaseType), remainingSeconds, phase.duration);
             return;
         }
 
@@ -184,33 +236,20 @@ export function initExperimentScreen() {
         }
 
         if (phase.phaseType === PREPARATION_PHASE_TYPE) {
-            updateTransitionReveal(remainingSeconds, phase);
             updatePopCountdown(remainingSeconds, phase);
         }
     });
 
-    // Currently only the 'cognitive' lead-in (precedesPhaseType) has a
-    // second transitionLines entry to reveal - 'dual-task' has just one
-    // static line plus its own popping 3/2/1 (see updatePopCountdown
-    // below), so phase.revealSecondLineAtRemaining is simply absent there
-    // and this is a no-op.
-    function updateTransitionReveal(remainingSeconds, phase) {
-        if (phase.revealSecondLineAtRemaining == null) {
-            return;
-        }
-        const shouldReveal = remainingSeconds <= phase.revealSecondLineAtRemaining;
-        transitionLine2.classList.toggle('revealed', shouldReveal);
-    }
-
-    // Pre-counting and dual-task transitions (precedesPhaseType "cognitive"
-    // or "dual-task"): pops a big 3/2/1 in the lead-in's final 3 seconds -
-    // purely a visual addition, this phase's duration/advance timing is
-    // entirely unaffected (still driven only by the phase's own Timer,
-    // same as every other phase). Re-triggers the "pop" animation every
-    // tick (remove -> forced reflow -> re-add), since the class staying
-    // applied across ticks wouldn't replay the animation.
+    // Dual-task transition (precedesPhaseType "dual-task"): pops a big
+    // 3/2/1 in the lead-in's final 3 seconds - purely a visual addition,
+    // this phase's duration/advance timing is entirely unaffected (still
+    // driven only by the phase's own Timer, same as every other phase).
+    // Re-triggers the "pop" animation every tick (remove -> forced reflow
+    // -> re-add), since the class staying applied across ticks wouldn't
+    // replay the animation. 'cognitive' no longer uses this - its own
+    // lead-in is a full digit countdown instead (see prepCountdown above).
     function updatePopCountdown(remainingSeconds, phase) {
-        const appliesToThisLeadIn = phase.precedesPhaseType === 'cognitive' || phase.precedesPhaseType === 'dual-task';
+        const appliesToThisLeadIn = phase.precedesPhaseType === 'dual-task';
         const shouldShow = appliesToThisLeadIn && remainingSeconds >= 1 && remainingSeconds <= 3;
         if (!shouldShow) {
             hide(transitionPopCountdown);
@@ -244,12 +283,15 @@ export function initExperimentScreen() {
 
         const display = getPhaseDisplay(phase, phaseRecord);
 
-        // Fullscreen phases hide the topbar's only other possible content
-        // (the eyebrow, via CSS) - if the timer badge is ALSO not shown
-        // (only PREPARE_MOTOR_BASELINE, whose lead-in is the digit
-        // countdown, not a running timer), the topbar box itself would
-        // otherwise render as an empty bordered box with nothing in it.
-        experimentTopbar.hidden = isFullscreenTaskPhase(phase) && !display.showTimer;
+        // The topbar's only content besides the timer badge is the
+        // eyebrow, and eyebrow is only ever set alongside showTimer: true
+        // (see phaseCopy.js#getRecoveryDisplay) - so whenever showTimer is
+        // false (PREPARE_MOTOR_BASELINE/PREPARE_SUBTRACTION_<n>, both of
+        // whose lead-in is a digit countdown instead of a running timer),
+        // the topbar box itself would otherwise render as an empty
+        // bordered strip with nothing in it. Hiding it here covers both
+        // fullscreen (motor) and non-fullscreen (count-back-only) cases.
+        experimentTopbar.hidden = !display.showTimer;
 
         // Reset every phase entry, even on phases that never show it - the
         // element is cheap to reset and this guarantees no stale "1" (with
@@ -285,17 +327,28 @@ export function initExperimentScreen() {
             hide(taskInstruction);
             hide(transitionLines);
             taskParagraphs.innerHTML = '';
-            for (const paragraph of display.paragraphs) {
+            const emphasized = display.emphasizedParagraphs || [];
+            display.paragraphs.forEach((paragraph, index) => {
                 const p = document.createElement('p');
-                p.textContent = paragraph;
+                if (emphasized.includes(index)) {
+                    const strong = document.createElement('strong');
+                    strong.textContent = paragraph;
+                    p.appendChild(strong);
+                } else {
+                    p.textContent = paragraph;
+                }
                 taskParagraphs.appendChild(p);
-            }
+            });
             show(taskParagraphs);
         } else {
             hide(taskParagraphs);
             hide(transitionLines);
             taskInstruction.textContent = display.instruction;
-            show(taskInstruction);
+            if (display.instruction) {
+                show(taskInstruction);
+            } else {
+                hide(taskInstruction);
+            }
         }
 
         const recoveryAudioFile = RECOVERY_AUDIO_FILE_BY_PHASE_ID[phase.phaseId];
@@ -318,7 +371,8 @@ export function initExperimentScreen() {
 
         prepCountdown.hidden = !display.showPrepCountdown;
         if (display.showPrepCountdown) {
-            prepCountdownValue.textContent = formatMotorCountdownValue(phase.duration, phase.duration);
+            prepCountdownHeading.textContent = phase.precedesPhaseType === 'motor' ? 'Begin clicking in' : 'Begin counting in';
+            prepCountdownValue.textContent = formatCountdownValue(countdownSequenceFor(phase.precedesPhaseType), phase.duration, phase.duration);
         }
 
         timerBadge.hidden = !display.showTimer;
@@ -385,13 +439,19 @@ function computeDebugFrameNumber(phase) {
     }
 }
 
-// The clicking-only lead-in counts down through exactly
-// MOTOR_COUNTDOWN_SEQUENCE (10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0) - one entry
-// per second of the phase's duration (config.motorBaselineCountdownSeconds),
-// indexed by how much of it has elapsed. There is no "BEGIN" moment here:
-// the task itself starts the instant 0's own second ends.
-function formatMotorCountdownValue(remainingSeconds, duration) {
+// Both digit-countdown lead-ins (clicking-only and count-back-only) count
+// down through their own fixed sequence - MOTOR_COUNTDOWN_SEQUENCE (10, 9,
+// ..., 1, 0) or SUBTRACTION_PREP_COUNTDOWN_SEQUENCE (3, 2, 1, 0) - one
+// entry per second of the phase's own duration
+// (motorBaselineCountdownSeconds/preCountingTransitionSeconds), indexed by
+// how much of it has elapsed. There is no "BEGIN" moment here: the real
+// task itself starts the instant 0's own second ends.
+function countdownSequenceFor(precedesPhaseType) {
+    return precedesPhaseType === 'motor' ? MOTOR_COUNTDOWN_SEQUENCE : SUBTRACTION_PREP_COUNTDOWN_SEQUENCE;
+}
+
+function formatCountdownValue(sequence, remainingSeconds, duration) {
     const index = duration - remainingSeconds;
-    const value = MOTOR_COUNTDOWN_SEQUENCE[index];
+    const value = sequence[index];
     return value != null ? String(value) : '';
 }

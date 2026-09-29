@@ -119,14 +119,20 @@ test('PREPARE_MOTOR_BASELINE duration is motorBaselineCountdownSeconds, not coun
     assert.equal(motorBaseline.duration, 80);
 });
 
-test('PREPARE_SUBTRACTION_<n> duration is preCountingTransitionSeconds, not counted in the count-back-only task\'s own duration', () => {
+test('PREPARE_SUBTRACTION_<n> duration is preCountingTransitionSeconds (matching SUBTRACTION_PREP_COUNTDOWN_SEQUENCE\'s length), not counted in the count-back-only task\'s own duration', () => {
     const sequence = buildPhaseSequence(experimentConfig);
-    assert.equal(experimentConfig.preCountingTransitionSeconds, 30);
+    // Must match SUBTRACTION_PREP_COUNTDOWN_SEQUENCE.length (3, 2, 1, 0)
+    // exactly, the same relationship motorBaselineCountdownSeconds has
+    // with MOTOR_COUNTDOWN_SEQUENCE - see that field's own comment.
+    assert.equal(experimentConfig.preCountingTransitionSeconds, 4);
 
     for (const value of experimentConfig.subtractionValues) {
         const prep = sequence.find((p) => p.phaseId === `PREPARE_SUBTRACTION_${value}`);
-        assert.equal(prep.duration, 30);
-        assert.equal(prep.revealSecondLineAtRemaining, experimentConfig.preCountingTransitionRevealSeconds);
+        assert.equal(prep.duration, 4);
+        // No reveal point any more - this lead-in is now a digit countdown
+        // (see ui/phaseCopy.js#SUBTRACTION_PREP_COUNTDOWN_SEQUENCE), not a
+        // transitionLines screen.
+        assert.equal(prep.revealSecondLineAtRemaining, undefined);
 
         assert.equal(sequence.find((p) => p.phaseId === `SUBTRACTION_${value}`).duration, 90);
     }

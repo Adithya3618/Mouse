@@ -19,7 +19,6 @@ const MOUSE_CONDITION_LABELS = {
     DUAL_TASK_17: 'Dual Task — Subtract by 17'
 };
 
-const STARTING_NUMBER_SUBTRACTION_VALUES = [3, 7, 17];
 
 // Cognitive results are kept in their own table, separate from the mouse
 // performance table above - cognitive and mouse accuracy are never
@@ -46,16 +45,26 @@ export function initResultsScreen() {
 // Called once, when the COMPLETE phase renders - session is the actual,
 // just-finished ExperimentController session, not test/mock data. `controller`
 // is needed to await any still-in-flight recording uploads/transcription/
-// scoring (see experiment/experimentController.js#getPendingCognitiveProcessing) -
-// mouse results render immediately (never delayed by this), while the
-// cognitive table/export stay gated behind a simple "Processing your
-// recording(s)…" status, per the "processing is a backend process, not
-// something the participant watches happen" rule. This NEVER shows the
-// participant a raw transcript - only whether processing is still running.
+// scoring (see experiment/experimentController.js#getPendingCognitiveProcessing),
+// and any still-in-flight mouse-task completion (see that same file's
+// getPendingMousePerformance() - normally already resolved by the time this
+// runs, except for the final condition's dual-task phase, which has no
+// recovery phase after it to provide that buffer). The cognitive
+// table/export stay gated behind a simple "Processing your recording(s)…"
+// status, per the "processing is a backend process, not something the
+// participant watches happen" rule. This NEVER shows the participant a raw
+// transcript - only whether processing is still running.
 export async function renderResults(session, controller) {
     renderCompleteHeading(session);
+
+    const pendingMouse = controller && controller.getPendingMousePerformance ? controller.getPendingMousePerformance() : [];
+    if (pendingMouse.length > 0) {
+        // allSettled, not all() - one phase's mouse task adapter failing
+        // must never prevent the others' (already-succeeded) results from
+        // rendering.
+        await Promise.allSettled(pendingMouse);
+    }
     renderMousePerformanceTable(session);
-    renderStartingNumbers(session);
     setExportStatus('', false);
 
     const downloadBtn = document.getElementById('downloadResultsBtn');
@@ -148,24 +157,6 @@ function renderMousePerformanceTable(session) {
         row.appendChild(createCell(mouse ? formatPercentage(mouse.totalAccuracy) : '—'));
         row.appendChild(createCell(mouse ? formatPercentage(mouse.targetEfficiency) : '—'));
         tbody.appendChild(row);
-    }
-}
-
-function renderStartingNumbers(session) {
-    const list = document.getElementById('startingNumbersList');
-    list.textContent = '';
-
-    for (const value of STARTING_NUMBER_SUBTRACTION_VALUES) {
-        const phase = session.phases.find((p) => p.phaseId === `SUBTRACTION_${value}`);
-
-        const dt = document.createElement('dt');
-        dt.textContent = `Subtract by ${value}`;
-
-        const dd = document.createElement('dd');
-        dd.textContent = phase && phase.startingNumber != null ? String(phase.startingNumber) : '—';
-
-        list.appendChild(dt);
-        list.appendChild(dd);
     }
 }
 

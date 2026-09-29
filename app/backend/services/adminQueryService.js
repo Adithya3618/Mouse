@@ -24,6 +24,24 @@
 // status for the dashboard, never to alter scoring.
 const EXPECTED_PHASE_COUNT = 6;
 
+// Dual-task counting-sequence continuity (see
+// frontend/js/cognitive/dualTaskContinuity.js's own header for the full
+// reasoning): each session's count-back-only and count-back-and-clicking
+// phases were scored independently, against the series' own shared
+// starting_number, at recording-processing time - unavoidably, since the
+// two phases' recordings can finish transcribing in either order (a real
+// race, not resolvable synchronously without delaying live phase
+// advancement). This module is applied here, read-time, to re-derive the
+// dual-task phase's display-only responses anchored to its sibling
+// count-only phase's actual last valid spoken number instead - never
+// written back to the database, so the stored rows this file's own
+// repositories return are never touched or duplicated.
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const DUAL_TASK_CONTINUITY_URL = pathToFileURL(
+    path.join(__dirname, '../../frontend/js/cognitive/dualTaskContinuity.js')
+).href;
+
 class AdminQueryService {
     constructor({ participantRepository, sessionRepository, phaseRepository, recordingRepository, transcriptionRepository, responseRepository }) {
         this._participants = participantRepository;
@@ -92,7 +110,9 @@ class AdminQueryService {
         }
         const participant = await this._participants.getById(session.participant_id);
         const phases = await this._phases.listForSession(sessionId);
-        const phaseDetails = await Promise.all(phases.map((phase) => this._buildPhaseDetail(phase)));
+        const phaseDetails = await this._applyDualTaskContinuity(
+            await Promise.all(phases.map((phase) => this._buildPhaseDetail(phase)))
+        );
 
         const totals = summarizeResponses(phaseDetails.flatMap((p) => p.responses));
         return {
@@ -150,7 +170,9 @@ class AdminQueryService {
 
     async _buildSessionSummary(session) {
         const phases = await this._phases.listForSession(session.id);
-        const phaseDetails = await Promise.all(phases.map((phase) => this._buildPhaseDetail(phase)));
+        const phaseDetails = await this._applyDualTaskContinuity(
+            await Promise.all(phases.map((phase) => this._buildPhaseDetail(phase)))
+        );
         const totals = summarizeResponses(phaseDetails.flatMap((p) => p.responses));
         const complete = phaseDetails.length >= EXPECTED_PHASE_COUNT && phaseDetails.every((p) => p.transcriptionStatus === 'succeeded');
 
@@ -195,9 +217,68 @@ class AdminQueryService {
             rawTranscript: latestTranscription ? latestTranscription.raw_text : null,
             transcriptionError: latestTranscription ? latestTranscription.error_message : null,
             processingRunId: latestRun ? latestRun.id : null,
+            scoringMode: latestRun ? latestRun.scoring_mode : null,
             responses,
             ...totals
         };
+    }
+
+    // Overlays continuation-aware responses/totals onto each dual-task
+    // (count-back-and-clicking) phase in `phaseDetails`, in place, using its
+    // sibling count-only phase (already present in the same array - both
+    // belong to the same session/series) - see
+    // frontend/js/cognitive/dualTaskContinuity.js. Count-only phases, REST,
+    // and the motor baseline are returned completely unchanged. Never
+    // mutates or persists anything - `phaseDetails` here is this read
+    // request's own freshly-built, disposable composition object.
+    async _applyDualTaskContinuity(phaseDetails) {
+        const { fromResponseRow, continueDualTaskScoring, isDualTaskPhaseId, countOnlyPhaseIdFor } =
+            await import(DUAL_TASK_CONTINUITY_URL);
+
+        const byPhaseId = new Map(phaseDetails.map((detail) => [detail.phaseId, detail]));
+
+        return Promise.all(phaseDetails.map(async (detail) => {
+            if (!isDualTaskPhaseId(detail.phaseId)) {
+                return detail;
+            }
+            const sibling = byPhaseId.get(countOnlyPhaseIdFor(detail.phaseId));
+
+            const { continuationAnchor, mapped } = await continueDualTaskScoring({
+                dualTaskResponses: detail.responses.map(fromResponseRow),
+                countOnlyResponses: sibling ? sibling.responses.map(fromResponseRow) : [],
+                startingNumber: detail.startingNumber,
+                subtractionValue: detail.subtractionValue,
+                // undefined (never null) so scoreResponses()'s own default
+                // parameter (DEFAULT_SCORING_MODE) applies when this phase
+                // has no processing run yet (zero responses so far) -
+                // explicit null would bypass that default and throw.
+                mode: detail.scoringMode || undefined
+            });
+
+            const responses = mapped.map((response) => ({
+                response_index: response.responseIndex,
+                expected_number: response.expectedNumber,
+                actual_number: response.actualNumber,
+                correctness: response.correctness,
+                reference_number_after_response: response.referenceNumberAfterResponse,
+                next_expected_number: response.nextExpectedNumber,
+                raw_transcript_segment: response.rawTranscriptSegment,
+                timestamp_ms: response.timestamp
+            }));
+
+            return {
+                ...detail,
+                // Per the protocol's Admin Session Review requirement:
+                // Starting Number (unchanged, above), Count-only Final
+                // Number, Dual-task Continuation Number - e.g.
+                // startingNumber 825, countOnlyFinalNumber 759,
+                // dualTaskContinuationNumber 756.
+                countOnlyFinalNumber: continuationAnchor,
+                dualTaskContinuationNumber: continuationAnchor - detail.subtractionValue,
+                responses,
+                ...summarizeResponses(responses)
+            };
+        }));
     }
 }
 

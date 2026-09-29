@@ -19,24 +19,34 @@ test('clicking-only (motor): renamed title, no starting number, timer shown, no 
     assert.ok(!display.instruction.includes('MOTOR_BASELINE'));
 });
 
-test('cognitive (count-back-only): renamed title, shows subtraction value and starting number from the phase record', () => {
+test('cognitive (count-back-only): renamed title spells out the subtraction value as a word, one plain instruction line, starting number shown only via its own dedicated field (never restated in prose)', () => {
     const display = getPhaseDisplay(
         { phaseType: 'cognitive', subtractionValue: 7 },
         { startingNumber: 892 }
     );
-    assert.equal(display.title, 'Count Back by Multiples of 7');
-    assert.ok(display.instruction.includes('892'));
-    assert.ok(display.instruction.includes('multiples of 7'));
+    assert.equal(display.title, 'Count Backward by Multiples of Seven');
+    assert.equal(display.instruction, '');
+    assert.ok(!display.instruction.includes('892'), 'the starting number is shown in its own box, not restated in the instruction text');
     assert.equal(display.showStartingNumber, true);
     assert.equal(display.startingNumber, 892);
 });
 
-test('cognitive: falls back to an em dash when no phase record is available yet', () => {
+test('cognitive: the instruction line never depends on whether a phase record is available yet (the starting number box handles that fallback on its own)', () => {
     const display = getPhaseDisplay({ phaseType: 'cognitive', subtractionValue: 3 }, null);
-    assert.ok(display.instruction.includes('—'));
+    assert.equal(display.instruction, '');
+    assert.equal(display.startingNumber, null);
 });
 
-test('dual-task: renamed title mentions "and Clicking", instruction mentions both counting and clicking, shows its own starting number', () => {
+test('cognitive title/instruction spell out all three configured subtraction values correctly (3/7/17 -> three/seven/seventeen)', () => {
+    const cases = [[3, 'Three'], [7, 'Seven'], [17, 'Seventeen']];
+    for (const [value, word] of cases) {
+        const display = getPhaseDisplay({ phaseType: 'cognitive', subtractionValue: value }, null);
+        assert.equal(display.title, `Count Backward by Multiples of ${word}`);
+        assert.equal(display.instruction, '');
+    }
+});
+
+test('dual-task: renamed title mentions "and Clicking", instruction mentions both counting and clicking, shows the same starting number', () => {
     const display = getPhaseDisplay(
         { phaseType: 'dual-task', subtractionValue: 17 },
         { startingNumber: 931 }
@@ -80,12 +90,11 @@ test('REST before series 3 (RECOVERY_AFTER_DUAL_7) is short, with a "Next Task" 
     assert.equal(display.paragraphs.length, 2);
 });
 
-test('cognitive/dual-task wording is consistent across all three subtraction values ("multiples of")', () => {
+// Cognitive's own "multiples of <word>" consistency across all three
+// values is covered by the dedicated test above - dual-task keeps the
+// digit form (unaffected by that change).
+test('dual-task wording is consistent across all three subtraction values ("multiples of <digit>")', () => {
     for (const value of [3, 7, 17]) {
-        const cognitive = getPhaseDisplay({ phaseType: 'cognitive', subtractionValue: value }, { startingNumber: 900 });
-        assert.ok(cognitive.title.includes(`Multiples of ${value}`));
-        assert.ok(cognitive.instruction.includes(`multiples of ${value}`));
-
         const dual = getPhaseDisplay({ phaseType: 'dual-task', subtractionValue: value }, { startingNumber: 900 });
         assert.ok(dual.title.includes(`Multiples of ${value}`));
         assert.ok(dual.instruction.includes(`multiples of ${value}`));
@@ -130,21 +139,21 @@ test('preparation before clicking-only: no starting number, no running timer, sh
     assert.equal(display.startingNumber, null);
 });
 
-test('preparation before count-back-only: two transition lines, running timer shown, no digit countdown', () => {
+test('preparation before count-back-only: digit countdown shown (like clicking-only), no running timer, starting number shown alongside it, no transition lines', () => {
     const display = getPhaseDisplay(
         { phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'cognitive' },
         { startingNumber: 947 }
     );
-    assert.equal(display.title, 'Count Back by Multiples of 3');
-    assert.equal(display.showTimer, true);
-    assert.equal(display.showStartingNumber, false);
-    assert.equal(display.showPrepCountdown, false);
-    assert.equal(display.transitionLines.length, 2);
-    assert.ok(display.transitionLines[0].includes('multiples of 3'));
-    assert.ok(display.transitionLines[1].includes('Count back by 3'));
+    assert.equal(display.title, 'Count Backward by Multiples of Three');
+    assert.equal(display.instruction, '');
+    assert.equal(display.showTimer, false);
+    assert.equal(display.showStartingNumber, true);
+    assert.equal(display.startingNumber, 947);
+    assert.equal(display.showPrepCountdown, true);
+    assert.equal(display.transitionLines, undefined);
 });
 
-test('preparation before dual-task: one static transition line (a new number), running timer shown, no starting number box, no digit countdown', () => {
+test('preparation before dual-task: one static transition line (keep counting), running timer shown, no starting number box, no digit countdown', () => {
     const display = getPhaseDisplay(
         { phaseType: 'preparation', subtractionValue: 17, precedesPhaseType: 'dual-task' },
         { startingNumber: 812 }
@@ -160,11 +169,7 @@ test('preparation before dual-task: one static transition line (a new number), r
     // second line was replaced by an actual popping 3/2/1 (see
     // ui/experimentScreen.js#updatePopCountdown), not phaseCopy.js content.
     assert.equal(display.transitionLines.length, 1);
-    assert.ok(display.transitionLines[0].toLowerCase().includes('count back by 17'));
-    // A fresh, independently-generated number for this block (see
-    // experimentController.js#_taskFamilyFor) - the line must not imply
-    // continuing the count-back-only block's own number.
-    assert.ok(display.transitionLines[0].toLowerCase().includes('new number'));
+    assert.ok(display.transitionLines[0].toLowerCase().includes('counting backward by 17'));
 });
 
 test('preparation copy never contains a raw phase id', () => {
@@ -187,11 +192,17 @@ test('every other phaseType explicitly reports showPrepCountdown: false', () => 
         getPhaseDisplay({ phaseType: 'cognitive', subtractionValue: 3 }, null),
         getPhaseDisplay({ phaseType: 'dual-task', subtractionValue: 7 }, null),
         getPhaseDisplay({ phaseType: 'recovery', subtractionValue: null, phaseId: 'RECOVERY_AFTER_MOTOR' }, null),
-        getPhaseDisplay({ phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'cognitive' }, null),
         getPhaseDisplay({ phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'dual-task' }, null),
         getPhaseDisplay({ phaseType: 'nonsense-unknown-type', subtractionValue: null }, null)
     ];
     for (const display of cases) {
         assert.equal(display.showPrepCountdown, false);
     }
+});
+
+test('preparation before clicking-only AND before count-back-only both report showPrepCountdown: true', () => {
+    const motorPrep = getPhaseDisplay({ phaseType: 'preparation', subtractionValue: null, precedesPhaseType: 'motor' }, null);
+    const cognitivePrep = getPhaseDisplay({ phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'cognitive' }, null);
+    assert.equal(motorPrep.showPrepCountdown, true);
+    assert.equal(cognitivePrep.showPrepCountdown, true);
 });

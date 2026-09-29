@@ -23,7 +23,7 @@ export const experimentConfig = {
 
     // Combined counting + clicking block for each condition -
     // "Count Back by N and Clicking" on screen; DUAL_TASK_<n> internally.
-    dualTaskDurationSeconds: 30,
+    dualTaskDurationSeconds: 10,
 
     // REST break after every count-back-only block and every dual-task
     // block (RECOVERY_AFTER_DUAL_3/_7). There is no separate recovery
@@ -40,35 +40,35 @@ export const experimentConfig = {
     // on its own (no Continue-button gate). These two together are a
     // deliberate 60-second combined budget for the pair - adjust either
     // value to change the split without changing the 60s total.
-    recoveryAfterMotorDurationSeconds: 10,
-    recoveryAfterMotorInfoDurationSeconds: 10,
+    recoveryAfterMotorDurationSeconds: 30,
+    recoveryAfterMotorInfoDurationSeconds: 30,
 
     // Length of the digit countdown (10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 - see
     // ui/phaseCopy.js/ui/experimentScreen.js) shown immediately before the
-    // clicking-only task, and ONLY before it - every other active task
-    // (count-back-only, dual-task) is instead preceded by its own
-    // "transition" screen (see preCountingTransitionSeconds/
-    // dualTaskTransitionSeconds below), not a digit countdown. This time is
+    // clicking-only task. Every other active task (dual-task) is instead
+    // preceded by its own "transition" screen (see dualTaskTransitionSeconds
+    // below), not a digit countdown - count-back-only's own lead-in
+    // (preCountingTransitionSeconds below) now uses this same digit-countdown
+    // treatment instead, just with its own shorter sequence. This time is
     // separate from and NOT included in the clicking-only task's own
     // duration above. Must match MOTOR_COUNTDOWN_SEQUENCE.length
     // (ui/phaseCopy.js).
     motorBaselineCountdownSeconds: 11,
 
     // PREPARE_SUBTRACTION_<n>: the screen shown before each condition's
-    // count-back-only block, explaining what's about to happen. Its second
-    // line (revealing the actual starting-number prompt) appears only in
-    // the final preCountingTransitionRevealSeconds of this duration - see
-    // ui/phaseCopy.js/ui/experimentScreen.js.
-    preCountingTransitionSeconds: 10,
-    preCountingTransitionRevealSeconds: 10,
+    // count-back-only block - a short digit countdown (3, 2, 1, 0 - see
+    // ui/phaseCopy.js#SUBTRACTION_PREP_COUNTDOWN_SEQUENCE), the same
+    // digit-countdown treatment motorBaselineCountdownSeconds above uses,
+    // shown alongside the upcoming starting number. Must match
+    // SUBTRACTION_PREP_COUNTDOWN_SEQUENCE.length exactly, for the same
+    // reason documented on motorBaselineCountdownSeconds above.
+    preCountingTransitionSeconds: 4,
 
     // PREPARE_DUAL_TASK_<n>: the screen shown between a condition's
     // count-back-only block and its dual-task block, telling the
     // participant to keep counting while the mouse task starts. Its final
-    // 3 seconds show a popping 3/2/1 (same treatment as
-    // preCountingTransitionSeconds's own pop countdown - see
-    // ui/experimentScreen.js#updatePopCountdown), not a separate
-    // configurable reveal point.
+    // 3 seconds show a popping 3/2/1 (see
+    // ui/experimentScreen.js#updatePopCountdown).
     dualTaskTransitionSeconds: 10,
 
     // Range for the random number each subtraction condition counts down

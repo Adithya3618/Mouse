@@ -71,6 +71,51 @@ export function scoreResponses(responses, { startingNumber, subtractionValue, mo
     });
 }
 
+// Pure, additive derivation of the section-9 research data model from
+// scoreResponses()'s own output above - re-derives the same adaptive-
+// chain/strict-sequence arithmetic scoreResponses() already performs
+// internally, purely to expose it per-response (referenceNumberAfterResponse/
+// nextExpectedNumber) rather than changing what it computes.
+//
+// Moved here (from app/backend/services/speechProcessingService.js) so the
+// exact same function can be reused unmodified for the dual-task
+// continuity feature's read-time rescoring (see
+// cognitive/dualTaskContinuity.js) - both the backend (Admin Session
+// Review) and the browser (participant-facing Excel export) need it, and
+// this file is already shared between both via a dynamic import() from the
+// backend, exactly like scoreResponses()/calculateCognitiveAccuracy() above.
+export function mapToResearchRecords(scoredResponses, { startingNumber, subtractionValue, mode }) {
+    let referenceNumber = startingNumber;
+    const mapped = scoredResponses.map((response, index) => {
+        if (response.correctness !== 'unresolved') {
+            referenceNumber = response.parsedNumber;
+        }
+        return {
+            responseIndex: index,
+            expectedNumber: response.expectedNumber,
+            actualNumber: response.parsedNumber,
+            correctness: response.correctness,
+            referenceNumberAfterResponse: referenceNumber,
+            // filled in below once every response's own expectedNumber is known
+            nextExpectedNumber: null,
+            rawTranscriptSegment: response.rawTranscript,
+            timestamp: null
+        };
+    });
+
+    for (let i = 0; i < mapped.length; i += 1) {
+        if (i + 1 < mapped.length) {
+            mapped[i].nextExpectedNumber = mapped[i + 1].expectedNumber;
+        } else {
+            mapped[i].nextExpectedNumber = mode === 'strict'
+                ? startingNumber - subtractionValue * (mapped.length + 1)
+                : mapped[i].referenceNumberAfterResponse - subtractionValue;
+        }
+    }
+
+    return mapped;
+}
+
 // Unresolved responses are excluded from the accuracy denominator (they
 // are neither a correct nor an incorrect arithmetic answer - the
 // participant's intent simply couldn't be determined) but are still

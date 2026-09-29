@@ -108,6 +108,12 @@ function createTestController(overrides = {}) {
     return { controller, timers, cognitiveAudioSessionFactory };
 }
 
+// Recovery AND recovery-info phases need an explicit proceedFromRecovery()
+// after their timer completes - see experimentController.js#_enterPhase
+// and tests/experiment/experimentController.test.mjs's own runFullExperiment
+// for the full reasoning (recovery-info now routes through the same
+// ready-flag path so the real app can defer it for still-playing audio;
+// there's no audio/UI layer here, so this always proceeds immediately).
 function runFullExperiment(controller, timers) {
     controller.start();
     while (controller.getCurrentPhaseId() !== 'COMPLETE') {
@@ -116,7 +122,7 @@ function runFullExperiment(controller, timers) {
             controller.advance();
         } else {
             timers.complete();
-            if (phase.phaseType === 'recovery') {
+            if (phase.phaseType === 'recovery' || phase.phaseType === 'recovery-info') {
                 controller.proceedFromRecovery();
             }
         }
@@ -160,7 +166,8 @@ test('the microphone does not start during INSTRUCTIONS, preparation, motor base
 
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
     controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
-    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes - not yet advanced
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_SUBTRACTION_3');
     assert.equal(controller.getCurrentCognitiveAudioSession(), null, 'microphone must be inactive during preparation, even though the starting number is already known');
 
@@ -175,7 +182,8 @@ test('the microphone starts exactly when SUBTRACTION_3 begins, and stops exactly
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
     controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
-    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes - not yet advanced
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
 
     timers.complete(); // -> SUBTRACTION_3
     assert.equal(controller.getCurrentPhaseId(), 'SUBTRACTION_3');
@@ -202,7 +210,8 @@ test('phase advancement is never delayed by recording upload/transcription/scori
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
     controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
-    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes - not yet advanced
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // -> SUBTRACTION_3
 
     timers.complete(); // -> PREPARE_DUAL_TASK_3 (this is the phase transition under test)
@@ -269,7 +278,8 @@ test('dual-task: the mouse task and the audio-recording session both run for DUA
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
     controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
-    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes - not yet advanced
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     timers.complete(); // PREPARE_DUAL_TASK_3
 
@@ -304,7 +314,8 @@ test('the microphone remains inactive throughout recovery and preparation surrou
     timers.complete(); // -> RECOVERY_AFTER_MOTOR (entered, its own timer starts)
     timers.complete(); // RECOVERY_AFTER_MOTOR's timer finishes
     controller.proceedFromRecovery(); // -> RECOVERY_AFTER_MOTOR_INFO
-    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes -> PREPARE_SUBTRACTION_3
+    timers.complete(); // RECOVERY_AFTER_MOTOR_INFO's timer finishes - not yet advanced
+    controller.proceedFromRecovery(); // -> PREPARE_SUBTRACTION_3
     timers.complete(); // SUBTRACTION_3
     timers.complete(); // PREPARE_DUAL_TASK_3
     assert.equal(controller.getCurrentPhaseId(), 'PREPARE_DUAL_TASK_3');

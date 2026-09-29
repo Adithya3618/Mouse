@@ -41,6 +41,31 @@ body{
   font-family:'IBM Plex Sans',sans-serif;
   min-height:100vh;
 }
+/* STEP 1 (#intakeStep1) only - its content (title, meta line, one button)
+   is short enough to otherwise sit awkwardly pinned to the top of a tall,
+   empty viewport, so it's vertically centered on the page instead. Scoped
+   via :has() to exactly when step 1 is the visible one, so steps 2/3
+   (the full protocol table, the intake form) and every other screen -
+   siblings of #screen-intake, not descendants - keep their existing
+   top-aligned layout, completely unchanged. flex-direction:column keeps
+   the visible <section>'s own width unaffected (cross-axis stretch),
+   only centering it top-to-bottom (main-axis, in column mode); .wrap's
+   own max-width+margin:auto still does the horizontal centering, as before.*/
+body:has(#intakeStep1:not([hidden])){
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+/* STEP 1 only (see the body:has() rule above for why it's scoped this way,
+   not shared with steps 2/3) - horizontal centering to match: title text
+   and the button both centered, not just the block itself (which .wrap's
+   own max-width+margin:auto already centers). */
+#intakeStep1{
+  text-align:center;
+}
+#intakeStep1 .step-nav{
+  justify-content:center;
+}
 .mono{font-family:'IBM Plex Mono',monospace;}
 
 /* Debug-only: a small numbered label in one consistent corner of every
@@ -173,22 +198,6 @@ h1{
   margin:0 0 40px 0;
 }
 .subhead strong{color:var(--ink); font-weight:500;}
-
-/* ---- overview pulse row (now just the phase count/runtime meta - the
-   motor/cognitive task legend that used to share this row was removed) ---- */
-.pulse-row{
-  display:flex;
-  align-items:center;
-  gap:clamp(12px, 1.75vw, 33px);
-  font-family:'IBM Plex Mono',monospace;
-  font-size:clamp(10px, 0.9vw, 17px);
-  letter-spacing:.04em;
-  color:var(--slate);
-  padding-top:clamp(14px, 1.6vw, 30px);
-  margin-bottom:clamp(20px, 2.5vw, 48px);
-  border-top:1px solid var(--line);
-}
-.pulse-meta{margin-left:auto;}
 
 
 /* ---- step navigation (Back / Next / Begin session) ---- */
@@ -332,10 +341,6 @@ button.begin:hover .arrow{transform:translateX(3px);}
   background:var(--panel);
   border:1.5px solid var(--slate);
 }
-.phase.dual::before{
-  border-color:var(--accent);
-  background:var(--accent);
-}
 .phase-row{
   display:flex;
   justify-content:space-between;
@@ -343,13 +348,13 @@ button.begin:hover .arrow{transform:translateX(3px);}
   gap:8px;
 }
 .phase-name{
-  font-size:clamp(12px, 1.4vw, 20px);
+  font-size:clamp(14px, 1.6vw, 22px);
   font-weight:500;
 }
-.phase.dual .phase-name{font-weight:700;}
 .phase-time{
   font-family:'IBM Plex Mono',monospace;
-  font-size:clamp(10px, 1.1vw, 17px);
+  font-size:clamp(12px, 1.3vw, 19px);
+  font-weight:700;
   color:var(--slate);
   white-space:nowrap;
 }

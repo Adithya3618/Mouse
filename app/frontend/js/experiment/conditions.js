@@ -30,12 +30,11 @@ export function buildMotorBaselineMetadata(config) {
 // precedes (see ui/phaseCopy.js/ui/experimentScreen.js for the display
 // side of each):
 //   - precedes 'motor': a short digit countdown (motorBaselineCountdownSeconds)
-//   - precedes 'cognitive': a "transition" screen (preCountingTransitionSeconds)
-//     whose second line reveals only near the end, plus a popping 3/2/1 in
-//     its final 3 seconds
+//   - precedes 'cognitive': a short digit countdown (preCountingTransitionSeconds),
+//     shown alongside the upcoming starting number - the same treatment as
+//     'motor' above, just with its own shorter sequence
 //   - precedes 'dual-task': a short "transition" screen
-//     (dualTaskTransitionSeconds) whose final 3 seconds show that same
-//     popping 3/2/1 (no separate reveal point - see revealTimingFor below)
+//     (dualTaskTransitionSeconds) whose final 3 seconds show a popping 3/2/1
 // None of these seconds are ever added to the task's own duration, since
 // the lead-in and the task itself are always separate phases.
 export function buildPreparationMetadata(taskMetadata, config) {
@@ -45,8 +44,7 @@ export function buildPreparationMetadata(taskMetadata, config) {
         cognitiveActive: false,
         subtractionValue: taskMetadata.subtractionValue ?? null,
         duration: preparationDurationFor(taskMetadata.phaseType, config),
-        precedesPhaseType: taskMetadata.phaseType,
-        ...revealTimingFor(taskMetadata.phaseType, config)
+        precedesPhaseType: taskMetadata.phaseType
     };
 }
 
@@ -60,22 +58,6 @@ function preparationDurationFor(precedesPhaseType, config) {
         default:
             return config.motorBaselineCountdownSeconds;
     }
-}
-
-// When a lead-in screen has a second line that reveals partway through
-// (see ui/phaseCopy.js's transitionLines - currently only the 'cognitive'
-// lead-in has one), the threshold is carried on the phase descriptor
-// itself - ui/experimentScreen.js reads it straight off the `phase` it
-// already receives on every tick, rather than needing its own copy of
-// config. Absent (undefined) for 'motor' (no transitionLines at all) and
-// 'dual-task' (a single static line - its final 3 seconds are instead a
-// popping 3/2/1, timed the same fixed way as 'cognitive''s own pop
-// countdown, so it needs no separate configurable reveal point).
-function revealTimingFor(precedesPhaseType, config) {
-    if (precedesPhaseType === 'cognitive') {
-        return { revealSecondLineAtRemaining: config.preCountingTransitionRevealSeconds };
-    }
-    return {};
 }
 
 // A REST period is identical regardless of which task it follows -

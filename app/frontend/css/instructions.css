@@ -52,30 +52,6 @@
   background:var(--paper);
 }
 
-/* Small, muted shortcut past the whole preview walkthrough - deliberately
-   understated (no border/background, quiet gray text) so it never competes
-   with the primary black Continue button. */
-.instructions-skip{
-  position:absolute;
-  right:20px;
-  bottom:16px;
-  background:none;
-  border:none;
-  padding:4px;
-  font-family:'IBM Plex Sans',sans-serif;
-  font-size:13px;
-  color:var(--slate);
-  cursor:pointer;
-}
-.instructions-skip:hover,
-.instructions-skip:focus-visible{
-  color:var(--ink);
-  text-decoration:underline;
-}
-.instructions-skip .arrow{
-  margin-left:2px;
-}
-
 .instructions-timeline{
   flex:0 0 380px;
   width:380px;

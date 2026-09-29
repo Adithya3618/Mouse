@@ -266,9 +266,9 @@ body.experiment-active {
   transform: translateX(3px);
 }
 
-/* --- Clicking-only lead-in: the literal 10/9/8/7/6/5/4 countdown (see
-   ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE) - the only lead-in that still
-   uses this big-digit treatment; count-back-only/dual-task lead-ins use
+/* --- Clicking-only and count-back-only lead-ins: the literal digit
+   countdown (see ui/phaseCopy.js#MOTOR_COUNTDOWN_SEQUENCE /
+   #SUBTRACTION_PREP_COUNTDOWN_SEQUENCE) - dual-task's own lead-in uses
    .transition-lines above instead. --- */
 .prep-countdown {
   display: flex;
@@ -426,30 +426,6 @@ body.experiment-active {
   font-family: 'IBM Plex Sans', sans-serif;
   font-weight: 500;
   white-space: normal;
-}
-
-/* --- Starting numbers --- */
-.starting-numbers-list {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  margin: 0;
-}
-
-.starting-numbers-list dt {
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--slate);
-  margin: 0 0 4px 0;
-}
-
-.starting-numbers-list dd {
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
 }
 
 /* --- Export --- */

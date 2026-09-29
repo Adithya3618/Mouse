@@ -24,6 +24,9 @@ const NUMBER_PARSER_URL = pathToFileURL(
 const SPEECH_SCORING_URL = pathToFileURL(
     path.join(__dirname, '../../frontend/js/cognitive/speechScoring.js')
 ).href;
+const SPEECH_SILENCE_FILTER_URL = pathToFileURL(
+    path.join(__dirname, '../../frontend/js/cognitive/speechSilenceFilter.js')
+).href;
 
 // Bumped only if this mapping step (NOT numberParser.js/speechScoring.js
 // themselves) ever changes - recorded on processing_runs so the admin
@@ -98,13 +101,21 @@ class SpeechProcessingService {
 
     async _scoreTranscription({ transcription, phase, scoringOptions }) {
         const { parseNumbersFromTranscript } = await import(NUMBER_PARSER_URL);
-        const { scoreResponses, calculateCognitiveAccuracy } = await import(SPEECH_SCORING_URL);
+        const { scoreResponses, calculateCognitiveAccuracy, mapToResearchRecords } = await import(SPEECH_SCORING_URL);
+        const { buildSpeechOnlyTranscript } = await import(SPEECH_SILENCE_FILTER_URL);
 
         const { scoringMode, expectedResponseDigits } = scoringOptions;
         const startingNumber = phase.starting_number;
         const subtractionValue = phase.subtraction_value;
 
-        const segments = parseNumbersFromTranscript(transcription.raw_text, { expectedDigits: expectedResponseDigits });
+        // Silence/non-speech audio can be hallucinated by the transcription
+        // service into repeated, fabricated text (e.g. "759, 759, 759...")
+        // - see speechSilenceFilter.js's own header for the full reasoning.
+        // transcription.raw_text itself (the research record) is NEVER
+        // altered - only this derived, speech-only string, used solely to
+        // decide what gets parsed into a scoreable response, is filtered.
+        const speechOnlyText = buildSpeechOnlyTranscript(transcription.raw_text, transcription.metadata);
+        const segments = parseNumbersFromTranscript(speechOnlyText, { expectedDigits: expectedResponseDigits });
         const rawResponses = segments.map((segment) => ({
             rawTranscript: segment.raw,
             parsedNumber: segment.value,
@@ -154,13 +165,6 @@ class SpeechProcessingService {
     }
 }
 
-// Pure, additive derivation of the section-9 data model from
-// speechScoring.js's own (unmodified) output - re-derives the same
-// adaptive-chain/strict-sequence arithmetic speechScoring.js already
-// performs internally, purely to expose it per-response rather than
-// changing what it computes. See speechScoring.js for the source rule this
-// mirrors.
-//
 // timestamp is left null: the UF NaviGator endpoint's plain transcript
 // response has no reliable per-number offset to attach (see
 // ufNaviGatorProvider.js's response_format:'verbose_json' request - whatever
@@ -169,37 +173,8 @@ class SpeechProcessingService {
 // responses without needing to re-transcribe anything). Per the spec: "If
 // precise audio clipping is too complex for the first implementation, at
 // minimum preserve timestamps so this can be added later" - the timestamps
-// are preserved, just not yet joined to individual responses.
-function mapToResearchRecords(scoredResponses, { startingNumber, subtractionValue, mode }) {
-    let referenceNumber = startingNumber;
-    const mapped = scoredResponses.map((response, index) => {
-        if (response.correctness !== 'unresolved') {
-            referenceNumber = response.parsedNumber;
-        }
-        return {
-            responseIndex: index,
-            expectedNumber: response.expectedNumber,
-            actualNumber: response.parsedNumber,
-            correctness: response.correctness,
-            referenceNumberAfterResponse: referenceNumber,
-            // filled in below once every response's own expectedNumber is known
-            nextExpectedNumber: null,
-            rawTranscriptSegment: response.rawTranscript,
-            timestamp: null
-        };
-    });
-
-    for (let i = 0; i < mapped.length; i += 1) {
-        if (i + 1 < mapped.length) {
-            mapped[i].nextExpectedNumber = mapped[i + 1].expectedNumber;
-        } else {
-            mapped[i].nextExpectedNumber = mode === 'strict'
-                ? startingNumber - subtractionValue * (mapped.length + 1)
-                : mapped[i].referenceNumberAfterResponse - subtractionValue;
-        }
-    }
-
-    return mapped;
-}
+// are preserved, just not yet joined to individual responses. This mapping
+// (mapToResearchRecords) itself now lives in cognitive/speechScoring.js,
+// alongside scoreResponses() - see that file for why.
 
 module.exports = { SpeechProcessingService, PARSER_VERSION };
