@@ -18,9 +18,11 @@ const { TranscriptionRepository } = require('./repositories/transcriptionReposit
 const { ResponseRepository } = require('./repositories/responseRepository');
 const { AuditLogRepository } = require('./repositories/auditLogRepository');
 const { ParticipantDeletionRepository } = require('./repositories/participantDeletionRepository');
+const { MousePerformanceRepository } = require('./repositories/mousePerformanceRepository');
 const { createDefaultTranscriptionProvider } = require('./transcription');
 const { SpeechProcessingService } = require('./services/speechProcessingService');
 const { AdminQueryService } = require('./services/adminQueryService');
+const { MousePerformanceService } = require('./services/mousePerformanceService');
 
 function createAppContext({ db, audioStorage, transcriptionProvider, logger = console.log } = {}) {
     const database = db || createResearchDatabase({ logger });
@@ -33,6 +35,7 @@ function createAppContext({ db, audioStorage, transcriptionProvider, logger = co
     const responseRepository = new ResponseRepository(database);
     const auditLogRepository = new AuditLogRepository(database);
     const participantDeletionRepository = new ParticipantDeletionRepository(database);
+    const mousePerformanceRepository = new MousePerformanceRepository(database);
 
     const resolvedAudioStorage = audioStorage || createAudioStorage({ logger });
     const resolvedTranscriptionProvider = transcriptionProvider || createDefaultTranscriptionProvider(logger);
@@ -46,19 +49,25 @@ function createAppContext({ db, audioStorage, transcriptionProvider, logger = co
         logger
     });
 
+    const mousePerformanceService = new MousePerformanceService({
+        participantRepository, sessionRepository, mousePerformanceRepository
+    });
+
     const adminQueryService = new AdminQueryService({
         participantRepository, sessionRepository, phaseRepository,
-        recordingRepository, transcriptionRepository, responseRepository
+        recordingRepository, transcriptionRepository, responseRepository,
+        mousePerformanceService
     });
 
     return {
         db: database,
         participantRepository, sessionRepository, phaseRepository,
         recordingRepository, transcriptionRepository, responseRepository,
-        auditLogRepository, participantDeletionRepository,
+        auditLogRepository, participantDeletionRepository, mousePerformanceRepository,
         audioStorage: resolvedAudioStorage,
         transcriptionProvider: resolvedTranscriptionProvider,
         speechProcessingService,
+        mousePerformanceService,
         adminQueryService
     };
 }

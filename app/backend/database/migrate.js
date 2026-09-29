@@ -32,7 +32,8 @@ function sha256(buffer) {
 // satisfied on insert.
 const DATABASE_TABLES = [
     'participants', 'sessions', 'phases', 'recordings',
-    'transcriptions', 'processing_runs', 'responses', 'admin_audit_log'
+    'transcriptions', 'processing_runs', 'responses', 'admin_audit_log',
+    'mouse_phase_performance', 'mouse_click_events', 'mouse_targets'
 ];
 
 // Copies every row of every research table from `source` to `destination`,

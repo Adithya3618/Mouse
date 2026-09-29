@@ -11,7 +11,7 @@
 // actually advances the experiment - one source of truth for phase timing.
 
 import { getExperimentController } from '../experiment/experimentRuntime.js';
-import { getPhaseDisplay, MOTOR_COUNTDOWN_SEQUENCE, SUBTRACTION_PREP_COUNTDOWN_SEQUENCE } from './phaseCopy.js';
+import { getPhaseDisplay, MOTOR_COUNTDOWN_SEQUENCE, SUBTRACTION_PREP_COUNTDOWN_SEQUENCE, DUAL_TASK_PREP_COUNTDOWN_SEQUENCE } from './phaseCopy.js';
 import { formatTime } from '../timer/timer.js';
 import { show, hide } from './transition.js';
 import { renderResults } from './resultsScreen.js';
@@ -226,7 +226,7 @@ export function initExperimentScreen() {
             return;
         }
 
-        if (phase.phaseType === PREPARATION_PHASE_TYPE && (phase.precedesPhaseType === 'motor' || phase.precedesPhaseType === 'cognitive')) {
+        if (phase.phaseType === PREPARATION_PHASE_TYPE && (phase.precedesPhaseType === 'motor' || phase.precedesPhaseType === 'cognitive' || phase.precedesPhaseType === 'dual-task')) {
             prepCountdownValue.textContent = formatCountdownValue(countdownSequenceFor(phase.precedesPhaseType), remainingSeconds, phase.duration);
             return;
         }
@@ -240,16 +240,14 @@ export function initExperimentScreen() {
         }
     });
 
-    // Dual-task transition (precedesPhaseType "dual-task"): pops a big
-    // 3/2/1 in the lead-in's final 3 seconds - purely a visual addition,
-    // this phase's duration/advance timing is entirely unaffected (still
-    // driven only by the phase's own Timer, same as every other phase).
-    // Re-triggers the "pop" animation every tick (remove -> forced reflow
-    // -> re-add), since the class staying applied across ticks wouldn't
-    // replay the animation. 'cognitive' no longer uses this - its own
-    // lead-in is a full digit countdown instead (see prepCountdown above).
+    // No longer reachable in practice - every lead-in (motor/cognitive/
+    // dual-task) now uses the full digit-countdown treatment instead (see
+    // prepCountdown above), so onPhaseTick's own early-return above always
+    // catches every real PREPARATION_PHASE_TYPE tick before this would run.
+    // Left in place rather than removed, in case a future lead-in variant
+    // wants this popping-digit treatment again.
     function updatePopCountdown(remainingSeconds, phase) {
-        const appliesToThisLeadIn = phase.precedesPhaseType === 'dual-task';
+        const appliesToThisLeadIn = false;
         const shouldShow = appliesToThisLeadIn && remainingSeconds >= 1 && remainingSeconds <= 3;
         if (!shouldShow) {
             hide(transitionPopCountdown);
@@ -305,12 +303,13 @@ export function initExperimentScreen() {
 
         taskTitle.textContent = display.title;
 
-        // Exactly one of these three content modes is shown per phase:
-        // a single instruction line (most active tasks), several
-        // paragraphs (REST), or a transitionLines reveal (the lead-in
-        // screens before count-back-only/dual-task) - two lines for
-        // 'cognitive', one line (plus updatePopCountdown's own popping
-        // 3/2/1) for 'dual-task'.
+        // Exactly one of these three content modes is shown per phase: a
+        // single instruction line (most active tasks - empty for the
+        // digit-countdown lead-ins, whose only copy is the title +
+        // prepCountdownHeading below), several paragraphs (REST), or a
+        // transitionLines reveal (no lead-in screen uses this any more -
+        // every one of the three now uses the digit-countdown treatment
+        // instead).
         if (display.transitionLines) {
             hide(taskInstruction);
             hide(taskParagraphs);
@@ -371,7 +370,7 @@ export function initExperimentScreen() {
 
         prepCountdown.hidden = !display.showPrepCountdown;
         if (display.showPrepCountdown) {
-            prepCountdownHeading.textContent = phase.precedesPhaseType === 'motor' ? 'Begin clicking in' : 'Begin counting in';
+            prepCountdownHeading.textContent = prepCountdownHeadingFor(phase.precedesPhaseType);
             prepCountdownValue.textContent = formatCountdownValue(countdownSequenceFor(phase.precedesPhaseType), phase.duration, phase.duration);
         }
 
@@ -439,15 +438,32 @@ function computeDebugFrameNumber(phase) {
     }
 }
 
-// Both digit-countdown lead-ins (clicking-only and count-back-only) count
-// down through their own fixed sequence - MOTOR_COUNTDOWN_SEQUENCE (10, 9,
-// ..., 1, 0) or SUBTRACTION_PREP_COUNTDOWN_SEQUENCE (3, 2, 1, 0) - one
-// entry per second of the phase's own duration
-// (motorBaselineCountdownSeconds/preCountingTransitionSeconds), indexed by
-// how much of it has elapsed. There is no "BEGIN" moment here: the real
-// task itself starts the instant 0's own second ends.
+// All three digit-countdown lead-ins count down through their own fixed
+// sequence - MOTOR_COUNTDOWN_SEQUENCE (10, 9, ..., 1, 0),
+// SUBTRACTION_PREP_COUNTDOWN_SEQUENCE (3, 2, 1, 0), or
+// DUAL_TASK_PREP_COUNTDOWN_SEQUENCE (5, 4, 3, 2, 1 - deliberately no 0) -
+// one entry per second of the phase's own duration
+// (motorBaselineCountdownSeconds/preCountingTransitionSeconds/
+// dualTaskTransitionSeconds), indexed by how much of it has elapsed. The
+// real task itself starts the instant the sequence's last entry's own
+// second ends - there is no separate "BEGIN" moment.
 function countdownSequenceFor(precedesPhaseType) {
-    return precedesPhaseType === 'motor' ? MOTOR_COUNTDOWN_SEQUENCE : SUBTRACTION_PREP_COUNTDOWN_SEQUENCE;
+    switch (precedesPhaseType) {
+        case 'motor': return MOTOR_COUNTDOWN_SEQUENCE;
+        case 'dual-task': return DUAL_TASK_PREP_COUNTDOWN_SEQUENCE;
+        default: return SUBTRACTION_PREP_COUNTDOWN_SEQUENCE;
+    }
+}
+
+// The #prepCountdownHeading label shown above each digit countdown -
+// distinct per lead-in, since each one precedes a different combination of
+// tasks (researcher-requested wording for 'dual-task' specifically).
+function prepCountdownHeadingFor(precedesPhaseType) {
+    switch (precedesPhaseType) {
+        case 'motor': return 'Begin clicking in';
+        case 'dual-task': return 'BEGIN COUNTING AND CLICKING IN';
+        default: return 'Begin counting in';
+    }
 }
 
 function formatCountdownValue(sequence, remainingSeconds, duration) {

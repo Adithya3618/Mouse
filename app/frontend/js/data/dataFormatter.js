@@ -28,6 +28,16 @@ export function formatSessionForExport(session) {
             startedAt: phase.startedAt,
             endedAt: phase.endedAt,
             ...(phase.mousePerformance ? { mousePerformance: { ...phase.mousePerformance } } : {}),
+            ...(phase.mouseClickData
+                ? {
+                    mouseClickData: {
+                        clickEvents: phase.mouseClickData.clickEvents.map((c) => ({ ...c })),
+                        targets: phase.mouseClickData.targets.map((t) => ({ ...t })),
+                        taskInfo: phase.mouseClickData.taskInfo ? { ...phase.mouseClickData.taskInfo } : null
+                    }
+                }
+                : {}),
+            ...(phase.mouseDataPersistence ? { mouseDataPersistence: { ...phase.mouseDataPersistence } } : {}),
             ...(phase.cognitivePerformance
                 ? { cognitivePerformance: { ...phase.cognitivePerformance, responses: phase.cognitivePerformance.responses.map((r) => ({ ...r })) } }
                 : {})

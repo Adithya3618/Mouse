@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Research Dashboard — Session</title>
+<title>Research Dashboard — Session Review</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -44,14 +44,44 @@
       </nav>
     </aside>
 
-    <main class="admin-content">
-      <a class="back-link" id="backLink" href="index.html">&larr; Back</a>
-      <p class="eyebrow">Session</p>
-      <h2 id="sessionHeading" class="page-title mono">—</h2>
+    <main class="admin-content sr-page">
+      <a class="back-link" id="backLink" href="index.html">&larr; Back to Participants</a>
 
-      <div class="stat-row" id="statRow"></div>
+      <header class="sr-header">
+        <div>
+          <h2 id="participantHeading" class="sr-title">Participant —</h2>
+          <p id="sessionHeading" class="sr-session-id">Session —</p>
+          <p id="sessionMeta" class="sr-meta"></p>
+        </div>
+        <span id="statusBadge" class="badge sr-status-badge" hidden></span>
+      </header>
 
-      <div id="phasesContainer"></div>
+      <div class="sr-summary-row" id="summaryRow"></div>
+
+      <section class="sr-card" id="phasesSection" hidden>
+        <h3 class="sr-card-title">Experiment Phases</h3>
+        <div class="sr-table-wrap">
+          <table class="admin-table sr-table sr-phase-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Phase</th>
+                <th>Condition</th>
+                <th>Starting Number</th>
+                <th>Duration</th>
+                <th>Cognitive Accuracy</th>
+                <th>Mouse Accuracy</th>
+                <th class="sr-center">Audio</th>
+                <th class="sr-center">Transcript</th>
+                <th><span class="sr-visually-hidden">View</span></th>
+              </tr>
+            </thead>
+            <tbody id="phaseTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <div id="phaseDetail"></div>
       <p class="status-line" id="statusLine"></p>
     </main>
   </div>

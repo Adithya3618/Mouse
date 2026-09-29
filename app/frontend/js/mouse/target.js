@@ -87,8 +87,14 @@ export function getContainedPosition(
     return { left, top };
 }
 
+// How long an un-clicked target stays on screen. mouse/mouseTask.js reads
+// this too, to know which targets were visible at the moment of each click.
+export const TARGET_LIFETIME_MS = 4000;
+
 // Spawns a single clickable target inside `container` and removes it after
-// `lifetimeMs`. Calls `onHit` the moment it is clicked.
+// `lifetimeMs`. Calls `onHit(event)` the moment it is clicked - the DOM
+// click event is passed through so mouse/mouseTask.js can pair this hit
+// with the same event when it bubbles up to its document-level listener.
 //
 // `container` (mouse/mouseTask.js's `gameContainer`, id="game") must be
 // the CSS positioning ancestor for this target's `position: absolute` to
@@ -96,7 +102,7 @@ export function getContainedPosition(
 // rule) - otherwise the browser falls back to positioning relative to the
 // viewport, which is what let targets appear outside the visible target
 // field before this fix.
-export function spawnTarget({ container, color, size, cursorType, onHit, lifetimeMs = 4000 }) {
+export function spawnTarget({ container, color, size, cursorType, onHit, lifetimeMs = TARGET_LIFETIME_MS }) {
     const target = document.createElement('div');
     target.classList.add('target');
     target.style.backgroundColor = color;
@@ -108,8 +114,8 @@ export function spawnTarget({ container, color, size, cursorType, onHit, lifetim
     target.style.left = `${left}px`;
     target.style.top = `${top}px`;
 
-    target.addEventListener('click', function () {
-        onHit();
+    target.addEventListener('click', function (event) {
+        onHit(event);
         target.style.display = 'none';
     });
 

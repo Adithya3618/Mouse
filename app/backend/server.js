@@ -19,6 +19,7 @@ const express = require('express');
 const exportsRouter = require('./routes/exports');
 const { createAppContext } = require('./appContext');
 const { createRecordingsRouter } = require('./routes/recordings');
+const { createMousePerformanceRouter } = require('./routes/mousePerformance');
 const { createAdminRouter } = require('./routes/admin');
 const { adminAuth } = require('./routes/adminAuth');
 
@@ -57,17 +58,21 @@ app.use(express.static(path.join(__dirname, '../frontend')));
 // any page yet - added now so it's in place when the UI phase wires it up.
 app.use('/config', express.static(path.join(__dirname, '../../config')));
 
-app.use(express.json());
+// Cognitive-speech audio recording -> transcription -> scoring pipeline,
+// mouse click-history persistence, and the research/admin dashboard API.
+// See app/backend/appContext.js for how the database/storage/transcription-
+// provider wiring is put together (SQLite for local dev/testing per that
+// file's own documentation; swap the repository implementations there for
+// a UF-approved persistent database before any real production deployment).
+const appContext = createAppContext();
 
+// Both mounted before the app-wide express.json() below: they parse their
+// own, larger JSON bodies (a phase's full click history can exceed 100kb).
+app.use(createMousePerformanceRouter(appContext));
 app.use(exportsRouter);
 
-// Cognitive-speech audio recording -> transcription -> scoring pipeline,
-// and the research/admin dashboard API. See app/backend/appContext.js for
-// how the database/storage/transcription-provider wiring is put together
-// (SQLite for local dev/testing per that file's own documentation; swap the
-// repository implementations there for a UF-approved persistent database
-// before any real production deployment).
-const appContext = createAppContext();
+app.use(express.json());
+
 app.use(createRecordingsRouter(appContext));
 app.use('/api/admin', adminAuth, createAdminRouter(appContext));
 

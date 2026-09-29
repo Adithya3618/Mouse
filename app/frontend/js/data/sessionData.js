@@ -82,6 +82,25 @@ export function recordMousePerformance(record, { totalTargets, totalClicks, tota
     return record.mousePerformance;
 }
 
+// Keeps the mouse task's complete click history for a phase (every click,
+// every target, task settings) alongside its summary above. Kept as a
+// separate property so mousePerformance's existing shape is unchanged.
+export function recordMouseClickData(record, { clickEvents, targets, taskInfo }) {
+    record.mouseClickData = {
+        clickEvents: clickEvents || [],
+        targets: targets || [],
+        taskInfo: taskInfo || null
+    };
+    return record.mouseClickData;
+}
+
+// Server persistence state of that click history:
+// { status: 'saving' | 'saved' | 'rejected' | 'failed', error }.
+export function recordMouseDataPersistence(record, { status, error = null }) {
+    record.mouseDataPersistence = { status, error };
+    return record.mouseDataPersistence;
+}
+
 // Stores cognitive (speech) performance for a single phase, using the
 // scoring produced by the backend's speechProcessingService.js (the same
 // result shape the deleted CognitiveSpeechSession#getResults() used to

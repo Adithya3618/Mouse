@@ -28,11 +28,19 @@ import {
     startPhaseRecord,
     endPhaseRecord,
     recordMousePerformance,
+    recordMouseClickData,
+    recordMouseDataPersistence,
     recordCognitiveProcessingPending,
     recordCognitivePerformance,
     recordCognitiveProcessingFailed,
     endSession
 } from '../data/sessionData.js';
+import { buildMousePerformancePayload, uploadMousePerformance } from '../data/mouseDataUploadService.js';
+
+// Uploads each mouse phase's click history to the research backend in the
+// browser. Under Node (the test suite) there is no backend to reach, so
+// uploading is off unless a test injects its own uploader.
+const defaultMouseDataUploader = typeof window !== 'undefined' ? uploadMousePerformance : null;
 
 const defaultLogger = (message) => console.log(`[EXPERIMENT] ${message}`);
 
@@ -122,7 +130,8 @@ export class ExperimentController {
         randomNumberGenerator = generateStartingNumber,
         cognitiveAudioSessionFactory = (options) => new CognitiveAudioSession(options),
         logger = defaultLogger,
-        participantId = null
+        participantId = null,
+        mouseDataUploader = defaultMouseDataUploader
     } = {}) {
         if (!config) {
             throw new Error('ExperimentController requires a config (see config/experimentConfig.js).');
@@ -135,6 +144,7 @@ export class ExperimentController {
         this._cognitiveAudioSessionFactory = cognitiveAudioSessionFactory;
         this._logger = logger;
         this._participantId = participantId;
+        this._mouseDataUploader = mouseDataUploader;
 
         this._phaseSequence = buildPhaseSequence(config);
         this._fsm = new PhaseStateMachine(this._phaseSequence);
@@ -383,10 +393,15 @@ export class ExperimentController {
             // cleared this._currentPhaseRecord. Closing over the actual
             // record object sidesteps that race entirely.
             const phaseRecordForMouseResults = this._currentPhaseRecord;
+            const sessionForMouseResults = this._session;
 
             // Tracked (see _pendingMousePerformance's own comment above)
             // but never awaited here - only this phase's own Timer (below)
-            // is allowed to call advance().
+            // is allowed to call advance(). It resolves only once this
+            // phase's click data has been handed to the server (or the
+            // upload's initial retries are exhausted) - so the COMPLETE
+            // screen, which awaits these, can never show results before the
+            // final DUAL_TASK_<n>'s mouse data has been persisted.
             let resolvePendingMousePerformance;
             this._pendingMousePerformance.push(
                 new Promise((resolve) => { resolvePendingMousePerformance = resolve; })
@@ -406,7 +421,8 @@ export class ExperimentController {
                             totalClicks: result.clickCount,
                             totalHits: result.hitCount
                         });
-                        resolvePendingMousePerformance();
+                        this._persistMouseData(sessionForMouseResults, phaseRecordForMouseResults, result)
+                            .finally(() => resolvePendingMousePerformance());
                     },
                     { logger: this._logger }
                 )
@@ -553,6 +569,30 @@ export class ExperimentController {
             this._currentPhaseRecord = null;
         }
         this._logger(`${phaseDescriptor.phaseId} completed`);
+    }
+
+    // Keeps the phase's click-level data on its record and uploads it to the
+    // research backend. Never throws and never touches phase timing - the
+    // returned promise only gates getPendingMousePerformance().
+    async _persistMouseData(session, phaseRecord, result) {
+        if (!Array.isArray(result.clickEvents)) {
+            return; // an adapter that reports counts only (no click history)
+        }
+        recordMouseClickData(phaseRecord, result);
+        if (!this._mouseDataUploader) {
+            return;
+        }
+        recordMouseDataPersistence(phaseRecord, { status: 'saving' });
+        try {
+            const outcome = await this._mouseDataUploader(buildMousePerformancePayload(session, phaseRecord, result));
+            recordMouseDataPersistence(phaseRecord, {
+                status: outcome && outcome.status ? outcome.status : 'failed',
+                error: outcome && outcome.error ? outcome.error : null
+            });
+        } catch (error) {
+            this._logger(`${phaseRecord.phaseId}: mouse data upload failed - ${error.message}`);
+            recordMouseDataPersistence(phaseRecord, { status: 'failed', error: error.message });
+        }
     }
 
     // A new random number is generated the first time a given subtraction

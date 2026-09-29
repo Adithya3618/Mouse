@@ -58,9 +58,15 @@ function renderWalkthrough() {
     document.getElementById('instructionsStepTitle').textContent = step.title;
     document.getElementById('instructionsStepDuration').textContent = `(${step.duration})`;
 
+    // The intro sentence is hidden for steps that have bullets (1, 2, 4, 5,
+    // 7, 8, 10) - researcher-requested removal there, since those steps
+    // still have plenty of other content. The count-only steps (3, 6, 9 -
+    // bullets: null) have no bullets/illustration at all, so with no intro
+    // they'd show almost nothing - the intro is their only body text, and
+    // stays shown for those.
     const introEl = document.getElementById('instructionsIntro');
     introEl.textContent = step.intro || '';
-    introEl.hidden = !step.intro;
+    introEl.hidden = Boolean(step.bullets) || !step.intro;
 
     const bulletsList = document.getElementById('instructionsBullets');
     bulletsList.innerHTML = '';

@@ -179,8 +179,8 @@ body.experiment-active {
 }
 
 .starting-number-value {
-  font-size: 26px;
-  font-weight: 600;
+  font-size: 38px;
+  font-weight: 800;
   color: var(--ink);
 }
 
@@ -662,7 +662,7 @@ body.fullscreen-task .starting-number-label {
 }
 
 body.fullscreen-task .starting-number-value {
-  font-size: 30px;
+  font-size: 42px;
 }
 
 /* The clicking-only digit countdown (PREPARE_MOTOR_BASELINE): centered in

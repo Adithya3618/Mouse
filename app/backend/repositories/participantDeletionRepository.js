@@ -49,11 +49,23 @@ class ParticipantDeletionRepository {
 
         const sessions = await this._db.prepare('SELECT * FROM sessions WHERE participant_id = ?').all(participantId);
         const storagePaths = [];
-        const counts = { sessions: 0, phases: 0, recordings: 0, transcriptions: 0, processingRuns: 0, responses: 0 };
+        const counts = {
+            sessions: 0, phases: 0, recordings: 0, transcriptions: 0, processingRuns: 0, responses: 0,
+            mousePhasePerformance: 0, mouseClickEvents: 0, mouseTargets: 0
+        };
 
         await this._db.exec('BEGIN;');
         try {
             for (const session of sessions) {
+                // Mouse task data (children before mouse_phase_performance,
+                // all before the session row).
+                counts.mouseClickEvents += Number((await this._db.prepare('SELECT COUNT(*) AS c FROM mouse_click_events WHERE session_id = ?').get(session.id)).c);
+                counts.mouseTargets += Number((await this._db.prepare('SELECT COUNT(*) AS c FROM mouse_targets WHERE session_id = ?').get(session.id)).c);
+                counts.mousePhasePerformance += Number((await this._db.prepare('SELECT COUNT(*) AS c FROM mouse_phase_performance WHERE session_id = ?').get(session.id)).c);
+                await this._db.prepare('DELETE FROM mouse_click_events WHERE session_id = ?').run(session.id);
+                await this._db.prepare('DELETE FROM mouse_targets WHERE session_id = ?').run(session.id);
+                await this._db.prepare('DELETE FROM mouse_phase_performance WHERE session_id = ?').run(session.id);
+
                 const phases = await this._db.prepare('SELECT * FROM phases WHERE session_id = ?').all(session.id);
                 for (const phase of phases) {
                     const recordings = await this._db.prepare('SELECT * FROM recordings WHERE phase_id = ?').all(phase.id);

@@ -1,42 +1,14 @@
-// Renders the final results (mouse-performance table + starting numbers)
-// on the Experiment Complete screen, and handles the Excel download.
-//
-// The mouse-performance numbers come straight from
-// data/sessionData.js#recordMousePerformance (which itself reuses
-// mouse/scoring.js's existing, unchanged accuracy/efficiency formulas) -
-// nothing here recomputes anything.
+// Renders the Experiment Complete screen (just the thank-you heading, plus
+// whether processing is still pending) and handles the Excel download.
+// Per the researcher's request, this screen no longer previews any
+// research results on-screen - it never did any of the real
+// computation/persistence anyway; the actual mouse-performance/cognitive
+// data still flows unchanged from data/sessionData.js's own recorders
+// straight into the Excel export below.
 
 import { getExperimentController } from '../experiment/experimentRuntime.js';
-import { formatPercentage, formatSessionForExport } from '../data/dataFormatter.js';
+import { formatSessionForExport } from '../data/dataFormatter.js';
 import { buildApiUrl } from '../config/apiBaseUrl.js';
-
-const MOUSE_CONDITION_ORDER = ['MOTOR_BASELINE', 'DUAL_TASK_3', 'DUAL_TASK_7', 'DUAL_TASK_17'];
-
-const MOUSE_CONDITION_LABELS = {
-    MOTOR_BASELINE: 'Motor Baseline',
-    DUAL_TASK_3: 'Dual Task — Subtract by 3',
-    DUAL_TASK_7: 'Dual Task — Subtract by 7',
-    DUAL_TASK_17: 'Dual Task — Subtract by 17'
-};
-
-
-// Cognitive results are kept in their own table, separate from the mouse
-// performance table above - cognitive and mouse accuracy are never
-// combined into one score (see data/sessionData.js#recordCognitivePerformance).
-const COGNITIVE_CONDITION_ORDER = [
-    'SUBTRACTION_3', 'DUAL_TASK_3',
-    'SUBTRACTION_7', 'DUAL_TASK_7',
-    'SUBTRACTION_17', 'DUAL_TASK_17'
-];
-
-const COGNITIVE_CONDITION_LABELS = {
-    SUBTRACTION_3: 'Subtract by 3',
-    DUAL_TASK_3: 'Dual Task — Subtract by 3',
-    SUBTRACTION_7: 'Subtract by 7',
-    DUAL_TASK_7: 'Dual Task — Subtract by 7',
-    SUBTRACTION_17: 'Subtract by 17',
-    DUAL_TASK_17: 'Dual Task — Subtract by 17'
-};
 
 export function initResultsScreen() {
     document.getElementById('downloadResultsBtn').addEventListener('click', downloadExcelResults);
@@ -49,28 +21,37 @@ export function initResultsScreen() {
 // and any still-in-flight mouse-task completion (see that same file's
 // getPendingMousePerformance() - normally already resolved by the time this
 // runs, except for the final condition's dual-task phase, which has no
-// recovery phase after it to provide that buffer). The cognitive
-// table/export stay gated behind a simple "Processing your recording(s)…"
-// status, per the "processing is a backend process, not something the
-// participant watches happen" rule. This NEVER shows the participant a raw
-// transcript - only whether processing is still running.
+// recovery phase after it to provide that buffer). The Download button
+// stays disabled behind a simple "Processing your recording(s)…" status
+// until every phase's data has actually reached the research server, so
+// the export it triggers is always complete - this screen shows no other
+// research results/statistics per the researcher's request (see
+// data/dataFormatter.js/exportService.js for where that data still goes,
+// completely unchanged).
 export async function renderResults(session, controller) {
     renderCompleteHeading(session);
 
+    const downloadBtn = document.getElementById('downloadResultsBtn');
+    const processingStatus = document.getElementById('cognitiveProcessingStatus');
+
+    // Each mouse phase's promise settles only after its click data has been
+    // sent to the research server (see experimentController.js#_persistMouseData),
+    // so this also waits for the final DUAL_TASK_<n>'s upload.
     const pendingMouse = controller && controller.getPendingMousePerformance ? controller.getPendingMousePerformance() : [];
     if (pendingMouse.length > 0) {
+        if (processingStatus) {
+            processingStatus.hidden = false;
+        }
+        if (downloadBtn) {
+            downloadBtn.disabled = true;
+        }
         // allSettled, not all() - one phase's mouse task adapter failing
         // must never prevent the others' (already-succeeded) results from
         // rendering.
         await Promise.allSettled(pendingMouse);
     }
-    renderMousePerformanceTable(session);
-    setExportStatus('', false);
 
-    const downloadBtn = document.getElementById('downloadResultsBtn');
-    const processingStatus = document.getElementById('cognitiveProcessingStatus');
     const pending = controller && controller.getPendingCognitiveProcessing ? controller.getPendingCognitiveProcessing() : [];
-
     if (pending.length > 0) {
         if (processingStatus) {
             processingStatus.hidden = false;
@@ -91,7 +72,6 @@ export async function renderResults(session, controller) {
     if (downloadBtn) {
         downloadBtn.disabled = false;
     }
-    renderCognitivePerformanceTable(session);
 }
 
 // session.participantCode is the exact value the participant entered at
@@ -109,61 +89,6 @@ function renderCompleteHeading(session) {
         ? `Thank You, Participant ${session.participantCode}`
         : 'Thank You for Participating';
     subtitle.textContent = 'Thank you for participating in the study. Your session is complete.';
-}
-
-function renderCognitivePerformanceTable(session) {
-    const tbody = document.getElementById('cognitivePerformanceTableBody');
-    tbody.textContent = '';
-
-    for (const phaseId of COGNITIVE_CONDITION_ORDER) {
-        const phase = session.phases.find((p) => p.phaseId === phaseId);
-        const cognitive = phase ? phase.cognitivePerformance : null;
-        const processingFailed = phase && phase.cognitiveProcessing && phase.cognitiveProcessing.status === 'failed';
-
-        const row = document.createElement('tr');
-        row.appendChild(createCell(COGNITIVE_CONDITION_LABELS[phaseId]));
-        row.appendChild(createCell(phase && phase.startingNumber != null ? String(phase.startingNumber) : '—'));
-        if (processingFailed) {
-            row.appendChild(createCell('Unavailable'));
-            row.appendChild(createCell('Unavailable'));
-            row.appendChild(createCell('Unavailable'));
-            row.appendChild(createCell('Unavailable'));
-            row.appendChild(createCell('Unavailable'));
-        } else {
-            row.appendChild(createCell(cognitive ? String(cognitive.numberOfResponses) : '—'));
-            row.appendChild(createCell(cognitive ? String(cognitive.correctResponses) : '—'));
-            row.appendChild(createCell(cognitive ? String(cognitive.incorrectResponses) : '—'));
-            row.appendChild(createCell(cognitive ? String(cognitive.unresolvedResponses) : '—'));
-            row.appendChild(createCell(cognitive ? formatPercentage(cognitive.cognitiveAccuracy) : '—'));
-        }
-        tbody.appendChild(row);
-    }
-}
-
-function renderMousePerformanceTable(session) {
-    const tbody = document.getElementById('mousePerformanceTableBody');
-    tbody.textContent = '';
-
-    for (const phaseId of MOUSE_CONDITION_ORDER) {
-        const phase = session.phases.find((p) => p.phaseId === phaseId);
-        const mouse = phase ? phase.mousePerformance : null;
-
-        const row = document.createElement('tr');
-        row.appendChild(createCell(MOUSE_CONDITION_LABELS[phaseId]));
-        row.appendChild(createCell(mouse ? String(mouse.totalTargets) : '—'));
-        row.appendChild(createCell(mouse ? String(mouse.totalClicks) : '—'));
-        row.appendChild(createCell(mouse ? String(mouse.totalHits) : '—'));
-        row.appendChild(createCell(mouse ? String(mouse.totalMisses) : '—'));
-        row.appendChild(createCell(mouse ? formatPercentage(mouse.totalAccuracy) : '—'));
-        row.appendChild(createCell(mouse ? formatPercentage(mouse.targetEfficiency) : '—'));
-        tbody.appendChild(row);
-    }
-}
-
-function createCell(text) {
-    const td = document.createElement('td');
-    td.textContent = text;
-    return td;
 }
 
 async function downloadExcelResults() {

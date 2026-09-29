@@ -43,7 +43,8 @@ const DUAL_TASK_CONTINUITY_URL = pathToFileURL(
 ).href;
 
 class AdminQueryService {
-    constructor({ participantRepository, sessionRepository, phaseRepository, recordingRepository, transcriptionRepository, responseRepository }) {
+    constructor({ participantRepository, sessionRepository, phaseRepository, recordingRepository, transcriptionRepository, responseRepository, mousePerformanceService = null }) {
+        this._mouse = mousePerformanceService;
         this._participants = participantRepository;
         this._sessions = sessionRepository;
         this._phases = phaseRepository;
@@ -115,6 +116,17 @@ class AdminQueryService {
         );
 
         const totals = summarizeResponses(phaseDetails.flatMap((p) => p.responses));
+
+        // Stored mouse summaries (no click rows - see getMousePhaseDetail).
+        // Dual-task phases also get theirs attached directly; the
+        // clicking-only baseline has no phases row, so it is only in
+        // mousePhases.
+        const mousePhases = this._mouse ? await this._mouse.listSummariesForSession(sessionId) : [];
+        const mouseByPhaseId = new Map(mousePhases.map((m) => [m.phaseId, m]));
+        for (const detail of phaseDetails) {
+            detail.mousePerformance = mouseByPhaseId.get(detail.phaseId) || null;
+        }
+
         return {
             sessionId: session.id,
             participantId: participant ? participant.id : null,
@@ -127,8 +139,17 @@ class AdminQueryService {
                 ? 'Complete'
                 : 'Incomplete',
             phases: phaseDetails,
+            mousePhases,
+            mouseTotals: await summarizeMouseTotals(mousePhases),
             ...totals
         };
+    }
+
+    async getMousePhaseDetail(sessionId, phaseId) {
+        if (!this._mouse) {
+            return null;
+        }
+        return this._mouse.getPhaseDetail(sessionId, phaseId);
     }
 
     async _buildParticipantSummary(participant) {
@@ -280,6 +301,30 @@ class AdminQueryService {
             };
         }));
     }
+}
+
+const MOUSE_SCORING_URL = pathToFileURL(
+    path.join(__dirname, '../../frontend/js/mouse/scoring.js')
+).href;
+
+// Session-level mouse totals: stored per-phase counts summed, with accuracy
+// from mouse/scoring.js's own calculateAccuracy (hits / clicks). null when
+// the session has no stored mouse data at all (e.g. older sessions).
+async function summarizeMouseTotals(mousePhases) {
+    if (mousePhases.length === 0) {
+        return null;
+    }
+    const { calculateAccuracy } = await import(MOUSE_SCORING_URL);
+    const totalClicks = mousePhases.reduce((sum, m) => sum + m.totalClicks, 0);
+    const totalHits = mousePhases.reduce((sum, m) => sum + m.totalHits, 0);
+    return {
+        phaseCount: mousePhases.length,
+        totalTargets: mousePhases.reduce((sum, m) => sum + m.totalTargets, 0),
+        totalClicks,
+        totalHits,
+        totalMisses: totalClicks - totalHits,
+        totalAccuracy: calculateAccuracy(totalHits, totalClicks)
+    };
 }
 
 function summarizeResponses(responses) {

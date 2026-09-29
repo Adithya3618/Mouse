@@ -337,6 +337,22 @@ function createAdminRouter({ adminQueryService, recordingRepository, phaseReposi
         }
     });
 
+    // One mouse-active phase's complete stored history: summary, every
+    // click event, every target. 404 when that phase was never persisted
+    // (e.g. sessions recorded before click-level capture existed).
+    router.get('/sessions/:id/mouse/:phaseId', async (req, res) => {
+        try {
+            const detail = await adminQueryService.getMousePhaseDetail(req.params.id, req.params.phaseId);
+            if (!detail) {
+                res.status(404).json({ error: 'No mouse click data is stored for this phase.' });
+                return;
+            }
+            res.json(detail);
+        } catch (error) {
+            res.status(500).json({ error: `Failed to load mouse data: ${error.message}` });
+        }
+    });
+
     // Streams the original audio file, with HTTP Range support so the
     // <audio> player (session detail page) can seek. Never served as a
     // plain static file - this route is the only way audio bytes leave the

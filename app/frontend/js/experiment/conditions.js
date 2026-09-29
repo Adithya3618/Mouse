@@ -33,8 +33,9 @@ export function buildMotorBaselineMetadata(config) {
 //   - precedes 'cognitive': a short digit countdown (preCountingTransitionSeconds),
 //     shown alongside the upcoming starting number - the same treatment as
 //     'motor' above, just with its own shorter sequence
-//   - precedes 'dual-task': a short "transition" screen
-//     (dualTaskTransitionSeconds) whose final 3 seconds show a popping 3/2/1
+//   - precedes 'dual-task': a short digit countdown (dualTaskTransitionSeconds) -
+//     same treatment again, no starting number shown (the participant
+//     continues from wherever they actually left off, not a displayed number)
 // None of these seconds are ever added to the task's own duration, since
 // the lead-in and the task itself are always separate phases.
 export function buildPreparationMetadata(taskMetadata, config) {

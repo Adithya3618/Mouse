@@ -138,18 +138,17 @@ test('PREPARE_SUBTRACTION_<n> duration is preCountingTransitionSeconds (matching
     }
 });
 
-test('PREPARE_DUAL_TASK_<n> duration is dualTaskTransitionSeconds, not counted in the dual-task\'s own duration', () => {
+test('PREPARE_DUAL_TASK_<n> duration is dualTaskTransitionSeconds (matching DUAL_TASK_PREP_COUNTDOWN_SEQUENCE\'s length), not counted in the dual-task\'s own duration', () => {
     const sequence = buildPhaseSequence(experimentConfig);
-    assert.equal(experimentConfig.dualTaskTransitionSeconds, 10);
+    // Must match DUAL_TASK_PREP_COUNTDOWN_SEQUENCE.length (5, 4, 3, 2, 1)
+    // exactly, the same relationship motorBaselineCountdownSeconds has
+    // with MOTOR_COUNTDOWN_SEQUENCE - see that field's own comment.
+    assert.equal(experimentConfig.dualTaskTransitionSeconds, 5);
 
     for (const value of experimentConfig.subtractionValues) {
         const prep = sequence.find((p) => p.phaseId === `PREPARE_DUAL_TASK_${value}`);
-        assert.equal(prep.duration, 10);
-        // No configurable reveal point - its final 3 seconds show a
-        // popping 3/2/1 (see ui/experimentScreen.js#updatePopCountdown)
-        // instead of a second transitionLines entry to reveal.
+        assert.equal(prep.duration, 5);
         assert.equal(prep.revealSecondLineAtRemaining, undefined);
-        assert.equal(prep.revealSecondLineAfterElapsed, undefined);
 
         assert.equal(sequence.find((p) => p.phaseId === `DUAL_TASK_${value}`).duration, 120);
     }

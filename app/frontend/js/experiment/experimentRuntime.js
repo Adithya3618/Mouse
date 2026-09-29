@@ -6,8 +6,14 @@
 import { ExperimentController } from './experimentController.js';
 import { Timer } from '../timer/timer.js';
 import { experimentConfig } from '/config/experimentConfig.js';
+import { flushBufferedMouseUploads } from '../data/mouseDataUploadService.js';
 
 let controllerInstance = null;
+
+// Re-send any mouse click data an earlier page load in this tab could not
+// deliver (e.g. the network dropped and the tab was reloaded). The server
+// ignores exact duplicates, so this is always safe.
+flushBufferedMouseUploads().catch(() => {});
 
 export function getExperimentController() {
     if (!controllerInstance) {

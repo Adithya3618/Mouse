@@ -104,6 +104,85 @@ CREATE TABLE IF NOT EXISTS responses (
 );
 CREATE INDEX IF NOT EXISTS idx_responses_run ON responses(processing_run_id);
 
+-- Mouse task data - see schema.sql for the full description.
+CREATE TABLE IF NOT EXISTS mouse_phase_performance (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id),
+    participant_id TEXT NOT NULL REFERENCES participants(id),
+    phase_id TEXT NOT NULL,
+    phase_type TEXT,
+    phase_started_at TEXT,
+    task_started_at TEXT,
+    task_ended_at TEXT,
+    duration_ms REAL,
+    actual_duration_ms REAL,
+    target_size_px REAL,
+    target_spawn_interval_ms REAL,
+    target_lifetime_ms REAL,
+    container_width REAL,
+    container_height REAL,
+    total_targets INTEGER NOT NULL,
+    total_clicks INTEGER NOT NULL,
+    total_hits INTEGER NOT NULL,
+    total_misses INTEGER NOT NULL,
+    accuracy REAL NOT NULL,
+    target_efficiency REAL,
+    avg_reaction_time_ms REAL,
+    min_reaction_time_ms REAL,
+    max_reaction_time_ms REAL,
+    median_reaction_time_ms REAL,
+    created_at TEXT NOT NULL,
+    UNIQUE (session_id, phase_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mouse_phase_performance_session ON mouse_phase_performance(session_id);
+
+CREATE TABLE IF NOT EXISTS mouse_click_events (
+    id TEXT PRIMARY KEY,
+    mouse_phase_performance_id TEXT NOT NULL REFERENCES mouse_phase_performance(id),
+    session_id TEXT NOT NULL,
+    participant_id TEXT NOT NULL,
+    phase_id TEXT NOT NULL,
+    click_sequence INTEGER NOT NULL,
+    clicked_at TEXT,
+    elapsed_ms REAL NOT NULL,
+    x REAL,
+    y REAL,
+    viewport_x REAL,
+    viewport_y REAL,
+    target_active INTEGER NOT NULL,
+    active_target_count INTEGER,
+    is_hit INTEGER NOT NULL,
+    is_miss INTEGER NOT NULL,
+    target_id INTEGER,
+    target_x REAL,
+    target_y REAL,
+    target_appeared_elapsed_ms REAL,
+    target_appeared_at TEXT,
+    reaction_time_ms REAL,
+    created_at TEXT NOT NULL,
+    UNIQUE (mouse_phase_performance_id, click_sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_mouse_click_events_session ON mouse_click_events(session_id);
+
+CREATE TABLE IF NOT EXISTS mouse_targets (
+    id TEXT PRIMARY KEY,
+    mouse_phase_performance_id TEXT NOT NULL REFERENCES mouse_phase_performance(id),
+    session_id TEXT NOT NULL,
+    phase_id TEXT NOT NULL,
+    target_id INTEGER NOT NULL,
+    x REAL,
+    y REAL,
+    size_px REAL,
+    appeared_elapsed_ms REAL NOT NULL,
+    appeared_at TEXT,
+    hit_elapsed_ms REAL,
+    disappeared_elapsed_ms REAL,
+    outcome TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (mouse_phase_performance_id, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_mouse_targets_session ON mouse_targets(session_id);
+
 CREATE TABLE IF NOT EXISTS admin_audit_log (
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,

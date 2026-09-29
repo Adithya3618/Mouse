@@ -46,7 +46,7 @@ test('cognitive title/instruction spell out all three configured subtraction val
     }
 });
 
-test('dual-task: renamed title mentions "and Clicking", instruction mentions both counting and clicking, shows the same starting number', () => {
+test('dual-task: renamed title mentions "and Clicking", instruction mentions both counting and clicking, starting number box is never shown (researcher-requested removal)', () => {
     const display = getPhaseDisplay(
         { phaseType: 'dual-task', subtractionValue: 17 },
         { startingNumber: 931 }
@@ -55,6 +55,7 @@ test('dual-task: renamed title mentions "and Clicking", instruction mentions bot
     assert.match(display.title, /and Clicking/);
     assert.ok(display.instruction.toLowerCase().includes('count'));
     assert.ok(display.instruction.toLowerCase().includes('click'));
+    assert.equal(display.showStartingNumber, false, 'the participant continues from where they left off, not the series\' shared starting number - showing it here would be misleading');
     assert.equal(display.startingNumber, 931);
 });
 
@@ -153,23 +154,19 @@ test('preparation before count-back-only: digit countdown shown (like clicking-o
     assert.equal(display.transitionLines, undefined);
 });
 
-test('preparation before dual-task: one static transition line (keep counting), running timer shown, no starting number box, no digit countdown', () => {
+test('preparation before dual-task: digit countdown shown (like clicking-only/count-back-only), no running timer, no starting number box, no transition lines', () => {
     const display = getPhaseDisplay(
         { phaseType: 'preparation', subtractionValue: 17, precedesPhaseType: 'dual-task' },
         { startingNumber: 812 }
     );
-    assert.match(display.title, /17/);
-    assert.match(display.title, /and Clicking/);
-    assert.equal(display.showTimer, true);
-    // The starting number shows on the DUAL_TASK_<n> screen itself now,
-    // not on this transition screen (see ui/experimentScreen.js).
+    assert.equal(display.title, 'Continue counting backward by multiples of 17 and click the dots');
+    assert.equal(display.instruction, '');
+    assert.equal(display.showTimer, false);
+    // Never shown on this screen - the participant continues from wherever
+    // they actually left off, not from a displayed number.
     assert.equal(display.showStartingNumber, false);
-    assert.equal(display.showPrepCountdown, false);
-    // Just one line now - the old static "Dots will appear in 3… 2… 1…"
-    // second line was replaced by an actual popping 3/2/1 (see
-    // ui/experimentScreen.js#updatePopCountdown), not phaseCopy.js content.
-    assert.equal(display.transitionLines.length, 1);
-    assert.ok(display.transitionLines[0].toLowerCase().includes('counting backward by 17'));
+    assert.equal(display.showPrepCountdown, true);
+    assert.equal(display.transitionLines, undefined);
 });
 
 test('preparation copy never contains a raw phase id', () => {
@@ -192,7 +189,6 @@ test('every other phaseType explicitly reports showPrepCountdown: false', () => 
         getPhaseDisplay({ phaseType: 'cognitive', subtractionValue: 3 }, null),
         getPhaseDisplay({ phaseType: 'dual-task', subtractionValue: 7 }, null),
         getPhaseDisplay({ phaseType: 'recovery', subtractionValue: null, phaseId: 'RECOVERY_AFTER_MOTOR' }, null),
-        getPhaseDisplay({ phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'dual-task' }, null),
         getPhaseDisplay({ phaseType: 'nonsense-unknown-type', subtractionValue: null }, null)
     ];
     for (const display of cases) {
@@ -200,9 +196,11 @@ test('every other phaseType explicitly reports showPrepCountdown: false', () => 
     }
 });
 
-test('preparation before clicking-only AND before count-back-only both report showPrepCountdown: true', () => {
+test('preparation before all three active tasks (clicking-only, count-back-only, dual-task) reports showPrepCountdown: true', () => {
     const motorPrep = getPhaseDisplay({ phaseType: 'preparation', subtractionValue: null, precedesPhaseType: 'motor' }, null);
     const cognitivePrep = getPhaseDisplay({ phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'cognitive' }, null);
+    const dualTaskPrep = getPhaseDisplay({ phaseType: 'preparation', subtractionValue: 3, precedesPhaseType: 'dual-task' }, null);
     assert.equal(motorPrep.showPrepCountdown, true);
     assert.equal(cognitivePrep.showPrepCountdown, true);
+    assert.equal(dualTaskPrep.showPrepCountdown, true);
 });
